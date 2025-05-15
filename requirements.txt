@@ -1,0 +1,45 @@
+# For reading Excel files
+openpyxl>=3.0.0,<4.0.0
+# Report Generation
+tabulate
+# Frontend & Plotting
+streamlit>=1.28.0,<2.0.0
+plotly>=5.10.0,<6.0.0
+
+# Core libraries
+pandas>=1.5.0,<3.0.0
+numpy>=1.20.0,<2.0.0
+matplotlib
+
+
+# NLP Metrics
+nltk>=3.6.0,<4.0.0
+rouge-score>=0.1.0,<0.2.0
+sacrebleu>=2.0.0,<3.0.0
+
+# Classification Metrics
+scikit-learn>=1.0.0,<2.0.0
+
+
+# For Semantic Similarity / Robustness
+# sentence-transformers>=2.2.0,<3.0.0
+# Add it if you need deep semantic similarity and have the resources.
+# bert-score>=0.3.11,<0.4.0  # Note: bert-score requires PyTorch/TensorFlow and downloads models.
+sentence-transformers
+
+
+
+
+
+
+# --- Optional Libraries for Advanced Metrics ---
+
+# For Safety/Toxicity (Example)
+# detoxify>=0.5.0,<0.6.0
+
+# For NLI-based Fact Checking (Example - requires model download)
+# transformers>=4.0.0,<5.0.0
+# torch>=1.8.0,<2.0.0 # Or tensorflow
+
+# Optional: For advanced reporting (e.g., HTML)
+# jinja2>=3.0.0,<4.0.0
