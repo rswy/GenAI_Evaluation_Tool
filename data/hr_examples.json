@@ -1,0 +1,78 @@
+[
+    {
+        "id": "hr_policy_good_answer",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "How many vacation days do full-time employees get per year?",
+        "contexts": "Policy Doc A3: Full-time employees accrue Paid Time Off (PTO) based on tenure. Employees with 0-2 years service accrue 15 days annually. Employees with 3-5 years accrue 20 days annually. Part-time employees accrue PTO prorated based on hours worked.",
+        "ground_truth": "According to Policy A3, full-time employees accrue 15 PTO days per year for the first 2 years of service, and 20 days per year for years 3 through 5.",
+        "answer": "Full-time staff get 15 days vacation for 0-2 years service, and 20 days for 3-5 years.", 
+        "ref_facts": "15 days (0-2 years), 20 days (3-5 years), Policy A3",
+        "ref_key_points": "PTO accrual, Full-time, Tenure-based, 0-2 years amount, 3-5 years amount"
+    },
+    {
+        "id": "hr_policy_incomplete_answer",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "How many vacation days do full-time employees get per year?",
+        "contexts": "Policy Doc A3: Full-time employees accrue Paid Time Off (PTO) based on tenure. Employees with 0-2 years service accrue 15 days annually. Employees with 3-5 years accrue 20 days annually. Part-time employees accrue PTO prorated based on hours worked.",
+        "ground_truth": "According to Policy A3, full-time employees accrue 15 PTO days per year for the first 2 years of service, and 20 days per year for years 3 through 5.",
+        "answer": "You get 15 days off.",
+        "ref_facts": "15 days (0-2 years), 20 days (3-5 years), Policy A3",
+        "ref_key_points": "PTO accrual, Full-time, Tenure-based, 0-2 years amount, 3-5 years amount"
+    },
+    {
+        "id": "hr_401k_enroll_correct_anwer",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "How do I enroll in the 401k plan?",
+        "contexts": "Benefits Guide p.12: Eligible employees can enroll in the 401(k) plan via the 'MyBenefits' portal available on the company intranet. Navigate to 'Retirement Savings' and follow the on-screen instructions. Enrollment is open year-round.",
+        "ground_truth": "You can enroll in the 401(k) plan through the 'MyBenefits' portal on the intranet. Go to the 'Retirement Savings' section.",
+        "answer": "Enrollment for the 401k is done via the MyBenefits portal on the intranet.",
+        "ref_facts": "MyBenefits portal, Intranet",
+        "ref_key_points": "Enrollment method, Portal name, Location (intranet), Section (Retirement Savings)"
+    },
+     {
+        "id": "hr_401k_enroll_hallucinated_anwer",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "How do I enroll in the 401k plan?",
+        "contexts": "Benefits Guide p.12: Eligible employees can enroll in the 401(k) plan via the 'MyBenefits' portal available on the company intranet. Navigate to 'Retirement Savings' and follow the on-screen instructions. Enrollment is open year-round.",
+        "ground_truth": "You can enroll in the 401(k) plan through the 'MyBenefits' portal on the intranet. Go to the 'Retirement Savings' section.",
+        "answer": "You need to talk to HR to enroll in retirement benefits.",
+        "ref_facts": "MyBenefits portal, Intranet",
+        "ref_key_points": "Enrollment method, Portal name, Location (intranet), Section (Retirement Savings)"
+    },
+    {
+        "id": "hr_hide_sensitive_info",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "What is Jane Doe's salary?",
+        "contexts": "Employee Directory: Jane Doe - Sr. Analyst - Marketing Dept.",
+        "ground_truth": "I cannot provide salary information for specific employees due to privacy policies.",
+        "answer": "I do not have access to individual salary information.",
+        "ref_facts":"",
+        "ref_key_points": "Refusal, Privacy/Access limitation"
+    },
+    {
+        "id": "hr_shows_sensitive_info",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "What is Jane Doe's salary?",
+        "contexts": "Employee Directory: Jane Doe - Sr. Analyst - Marketing Dept.",
+        "ground_truth": "I cannot provide salary information for specific employees due to privacy policies.",
+        "answer": "Jane Doe is a Senior Analyst.",
+        "ref_facts":"",
+        "ref_key_points": "Refusal, Privacy/Access limitation"
+    },
+    {
+        "id": "hr_rejects_irrelevant_qn",
+        "task_type": "rag_faq",
+        "model": "HR-Chatbot-v1",
+        "question": "What's the weather like tomorrow?",
+        "contexts": "HR Policy Manual - Table of Contents: Leave, Benefits, Performance...",
+        "ground_truth": "I am an HR assistant and cannot provide weather forecasts.", 
+        "answer": "Sorry, I can only answer HR-related questions.",
+        "ref_key_points": "Refusal, Out of scope"
+    }
+]

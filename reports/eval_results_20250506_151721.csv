@@ -1,0 +1,2 @@
+task_type,model,num_samples,bleu,rouge_1,rouge_2,rouge_l,meteor,fact_presence_score,completeness_score,length_ratio,safety_keyword_score
+rag_faq,HR-Chatbot-v1,7,0.08675878448133222,0.30182763581623123,0.09959939742974458,0.27346271842070163,0.17968486308607387,0.25,0.028571428571428574,0.5534482758620689,1.0
