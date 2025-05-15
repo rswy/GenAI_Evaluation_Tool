@@ -412,7 +412,7 @@ with tab_eval:
         else: st.warning("No data in editor. Load or generate data first.")
 
     st.divider(); st.header("Evaluation Results")
-    res_tab_agg, res_tab_ind = st.tabs(["📈 Aggregated Results", "📄 Individual Scores"])
+    res_tab_ind, res_tab_agg = st.tabs(["📄 Individual Scores","📈 Aggregated Results"])
 
     with res_tab_agg:
         # st.subheader("Aggregated Scores per Task & Model")
@@ -430,7 +430,7 @@ with tab_eval:
                 simple_formatter = {col: "{:.4f}" for col in agg_df.select_dtypes(include=np.number).columns}
                 st.dataframe(agg_df.style.format(formatter=simple_formatter, na_rep='NaN'), use_container_width=True)
             else:
-                st.markdown("##### 🏆 Best Model Summary (Highlights)")
+                st.markdown("#### 🏆 Best Model Summary (Highlights)")
                 st.caption("Top models per task based on key, non-placeholder metrics (non-zero scores only). Expand tasks.")
                 key_metrics_per_task = {
                     RAG_FAQ: [m for m in ["fact_presence_score", "completeness_score", "rouge_l"] if not is_placeholder_metric(m)],
@@ -479,7 +479,7 @@ with tab_eval:
                                     st.markdown("---") 
                     st.markdown("---") 
 
-                st.markdown("##### Overall Summary Table (Aggregated)")
+                st.markdown("#### 📊 Overall Summary Table (Aggregated by Task & Dimension)")
                 agg_df_display_overall = agg_df.copy()
                 renamed_cols_overall = {}
                 final_display_cols_overall = []
@@ -515,7 +515,7 @@ with tab_eval:
                 st.markdown("---")
 
                 # --- Interpretation Section (Moved Here) ---
-                st.markdown("##### Interpreting Your Aggregated Results (Experimental)")
+                st.markdown("#### 🔍 Interpreting Your Aggregated Results (Experimental)")
                 with st.expander("💡 Interpreting Your Aggregated Results (Experimental)", expanded=False):
                     st.markdown("""
                     This section offers a general interpretation of the aggregated scores. Remember that these are heuristic-based and should be combined with a qualitative review of individual responses for a complete understanding.
@@ -591,7 +591,7 @@ with tab_eval:
                     else: st.info("Run an evaluation to see interpretations.")
                 st.markdown("---") 
 
-                st.markdown("##### Aggregated Results by Task & Dimension")
+                st.markdown("#### 📊 Task Specific Metric Table & Chart 📈  ")
                 available_tasks_agg = sorted(agg_df['task_type'].unique()) if 'task_type' in agg_df else []
                 if not available_tasks_agg: st.info("No tasks found in aggregated results.")
                 else:
@@ -676,7 +676,7 @@ with tab_eval:
         else: st.info("No aggregated results to display. Run an evaluation.")
 
     with res_tab_ind:
-        st.subheader("Individual Test Case Scores")
+        st.subheader("📊 Individual Test Case Scores")
         if st.session_state.individual_scores_df is not None and not st.session_state.individual_scores_df.empty:
             ind_df_display = st.session_state.individual_scores_df.copy()
 
