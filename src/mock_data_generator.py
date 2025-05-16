@@ -1,4 +1,4 @@
-# src/mock_data_generator.py (Improved Flat Format)
+# src/mock_data_generator.py (Improved Flat Format - 'contexts' removed)
 import json
 import random
 import copy
@@ -10,6 +10,7 @@ import os # Added for potential path operations if needed
 """
 Generates mock data in a flat, row-per-evaluation format.
 Aims to produce non-zero scores for custom dimensions by explicitly including facts/key points.
+'contexts' field has been removed.
 """
 
 # Ensure tasks module can be found if run directly (Add try-except for robustness)
@@ -38,15 +39,15 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
     # --- RAG/FAQ Data ---
     rag_cases = [
         {
-            "input": {"question": "Capital of France and known for?", "contexts": "Paris is the capital of France, known for the Eiffel Tower, Louvre museum, and fashion."},
+            "input": {"question": "Capital of France and known for?"}, # 'contexts' removed
             "ref": {"ground_truth": "Paris is the capital, known for Eiffel Tower, Louvre, and fashion.", "ref_facts": "Paris is capital,Eiffel Tower is monument,Louvre is museum", "ref_key_points": "Capital,Known For,Eiffel Tower,Louvre"}
         },
         {
-            "input": {"question": "Photosynthesis inputs?", "contexts": "Plants use light, water, and CO2 for photosynthesis to create energy."},
+            "input": {"question": "Photosynthesis inputs?"}, # 'contexts' removed
             "ref": {"ground_truth": "The main inputs for photosynthesis are light, water, and carbon dioxide (CO2).", "ref_facts": "Input is light,Input is water,Input is CO2", "ref_key_points": "Inputs,Light,Water,CO2"}
         },
         {
-            "input": {"question": "Flu cause and symptoms?", "contexts": "Influenza viruses cause the flu. Symptoms include fever, cough, aches."},
+            "input": {"question": "Flu cause and symptoms?"}, # 'contexts' removed
             "ref": {"ground_truth": "The flu is caused by influenza viruses. Common symptoms are fever, cough, and muscle aches.", "ref_facts": "Cause is virus,Symptom is fever,Symptom is cough", "ref_key_points": "Cause,Symptoms,Virus,Fever,Cough"}
         },
     ]
@@ -85,7 +86,8 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
                 # Use different ID prefixes for clarity
                 "id": f"rag_{eval_id_counter:03d}", # Padded ID
                 "task_type": RAG_FAQ, "model": model_name,
-                "question": input_data["question"], "contexts": input_data["contexts"],
+                "question": input_data["question"], 
+                # "contexts": input_data.get("contexts"), # 'contexts' removed
                 "ground_truth": ref_data["ground_truth"],
                 "ref_facts": ref_data.get("ref_facts"), # Keep original comma-sep string for file
                 "ref_key_points": ref_data.get("ref_key_points"), # Keep original comma-sep string for file
@@ -96,15 +98,15 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
     # --- Summarization Data ---
     sum_cases = [
          {
-            "input": {"question": "Summarize: JWST is a large infrared space telescope successor to Hubble, observing the early universe and exoplanets.", "contexts": None},
+            "input": {"question": "Summarize: JWST is a large infrared space telescope successor to Hubble, observing the early universe and exoplanets."}, # 'contexts' removed (was None anyway)
             "ref": {"ground_truth": "JWST is a powerful infrared telescope studying the early universe and exoplanets, succeeding Hubble.", "ref_key_points": "JWST,Infrared,Successor,Early universe,Exoplanets"}
         },
         {
-            "input": {"question": "Summarize: AI involves intelligent agents perceiving environments and maximizing goal achievement, mimicking human cognition like learning.", "contexts": None},
+            "input": {"question": "Summarize: AI involves intelligent agents perceiving environments and maximizing goal achievement, mimicking human cognition like learning."}, # 'contexts' removed
             "ref": {"ground_truth": "AI uses intelligent agents to perceive surroundings and achieve goals, mimicking human learning.", "ref_key_points": "AI definition,Agents,Goals,Perception,Mimics cognition"}
         },
          {
-            "input": {"question": "Summarize: The Great Barrier Reef off Australia is the largest coral system, visible from space, comprised of thousands of reefs and islands.", "contexts": None},
+            "input": {"question": "Summarize: The Great Barrier Reef off Australia is the largest coral system, visible from space, comprised of thousands of reefs and islands."}, # 'contexts' removed
             "ref": {"ground_truth": "The Great Barrier Reef in Australia is the world's biggest coral system, visible from space.", "ref_key_points": "Great Barrier Reef,Location,Largest,Visible from space"}
         },
     ]
@@ -134,7 +136,8 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
             all_data.append({
                 "id": f"sum_{eval_id_counter:03d}",
                 "task_type": SUMMARIZATION, "model": model_name,
-                "question": input_data["question"], "contexts": input_data.get("contexts"),
+                "question": input_data["question"], 
+                # "contexts": input_data.get("contexts"), # 'contexts' removed
                 "ground_truth": ref_data["ground_truth"],
                 "ref_facts": ref_data.get("ref_facts"), # Likely None
                 "ref_key_points": ref_data.get("ref_key_points"),
@@ -144,16 +147,16 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
 
     # --- Classification Data ---
     cls_cases = [
-        {"input": {"question": "This was amazing!", "contexts": None}, "ref": {"ground_truth": "positive"}},
-        {"input": {"question": "Truly awful experience.", "contexts": None}, "ref": {"ground_truth": "negative"}},
-        {"input": {"question": "It was adequate.", "contexts": None}, "ref": {"ground_truth": "neutral"}},
-        {"input": {"question": "I'm overjoyed!", "contexts": None}, "ref": {"ground_truth": "positive"}},
-        {"input": {"question": "Very disappointing.", "contexts": None}, "ref": {"ground_truth": "negative"}},
-        {"input": {"question": "The report is complete.", "contexts": None}, "ref": {"ground_truth": "neutral"}},
+        {"input": {"question": "This was amazing!"}, "ref": {"ground_truth": "positive"}}, # 'contexts' removed
+        {"input": {"question": "Truly awful experience."}, "ref": {"ground_truth": "negative"}}, # 'contexts' removed
+        {"input": {"question": "It was adequate."}, "ref": {"ground_truth": "neutral"}}, # 'contexts' removed
+        {"input": {"question": "I'm overjoyed!"}, "ref": {"ground_truth": "positive"}}, # 'contexts' removed
+        {"input": {"question": "Very disappointing."}, "ref": {"ground_truth": "negative"}}, # 'contexts' removed
+        {"input": {"question": "The report is complete."}, "ref": {"ground_truth": "neutral"}}, # 'contexts' removed
     ]
     labels = ["positive", "negative", "neutral"]
 
-    for i in range(num_samples_per_task * 2):
+    for i in range(num_samples_per_task * 2): # Multiplied to get more classification samples
         case = copy.deepcopy(cls_cases[i % len(cls_cases)])
         input_data = case["input"]
         ref_data = case["ref"]
@@ -165,7 +168,7 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
             MODEL_PARTIAL: random.choice([true_label, random.choice(other_labels)]) if other_labels else true_label,
             MODEL_POOR: random.choice(other_labels) if other_labels else true_label
         }
-        if random.random() < 0.15: responses[MODEL_GOOD] = random.choice(other_labels) if other_labels else true_label
+        if random.random() < 0.15: responses[MODEL_GOOD] = random.choice(other_labels) if other_labels else true_label # Introduce some errors for MODEL_GOOD
 
         for model_name, response in responses.items():
             all_data.append({
@@ -173,7 +176,7 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
                 "test_description": f"Test case for {input_data['question'][:30]}... with {model_name}", # Add description
                 "task_type": CLASSIFICATION, "model": model_name,
                 "question": input_data["question"], 
-                "contexts": input_data.get("contexts"),
+                # "contexts": input_data.get("contexts"), # 'contexts' removed
                 "ground_truth": ref_data["ground_truth"],
                 "ref_facts": None, 
                 "ref_key_points": None,
@@ -183,9 +186,9 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
 
     # --- Chatbot Data ---
     chat_cases = [
-        {"input": {"question": "Hi there", "contexts": None}, "ref": {"ground_truth": "Hello! How can I help you today?"}},
-        {"input": {"question": "Tell me about your capabilities", "contexts": None}, "ref": {"ground_truth": "I can answer questions, summarize text, and evaluate based on metrics."}},
-        {"input": {"question": "Thanks for the help", "contexts": None}, "ref": {"ground_truth": "You're welcome! Let me know if you need anything else."}},
+        {"input": {"question": "Hi there"}, "ref": {"ground_truth": "Hello! How can I help you today?"}}, # 'contexts' removed
+        {"input": {"question": "Tell me about your capabilities"}, "ref": {"ground_truth": "I can answer questions, summarize text, and evaluate based on metrics."}}, # 'contexts' removed
+        {"input": {"question": "Thanks for the help"}, "ref": {"ground_truth": "You're welcome! Let me know if you need anything else."}}, # 'contexts' removed
     ]
 
     for i in range(num_samples_per_task):
@@ -194,18 +197,20 @@ def generate_mock_data_flat(num_samples_per_task=3, seed=42):
         ref_data = case["ref"]
 
         responses = {
-            MODEL_GOOD: f"{ref_data['ground_truth'][:-6]} How's that?",
-            MODEL_PARTIAL: f"{ref_data['ground_truth'].split('!')[0]}. I am here.",
-            MODEL_POOR: f"Okay. Did you hear about the {random.choice(['game', 'unsafe topic', 'meeting'])}?"
+            MODEL_GOOD: f"{ref_data['ground_truth'][:-6]} How's that?", # Slightly varied good response
+            MODEL_PARTIAL: f"{ref_data['ground_truth'].split('!')[0]}. I am here.", # Partial response
+            MODEL_POOR: f"Okay. Did you hear about the {random.choice(['game', 'unsafe topic', 'meeting'])}?" # Potentially off-topic/unsafe
         }
 
         for model_name, response in responses.items():
             all_data.append({
                 "id": f"chat_{eval_id_counter:03d}",
                 "task_type": CHATBOT, "model": model_name,
-                "question": input_data["question"], "contexts": input_data.get("contexts"),
+                "question": input_data["question"], 
+                # "contexts": input_data.get("contexts"), # 'contexts' removed
                 "ground_truth": ref_data["ground_truth"],
-                "ref_facts": None, "ref_key_points": None,
+                "ref_facts": None, 
+                "ref_key_points": None,
                 "answer": response,
             })
             eval_id_counter += 1
@@ -228,11 +233,13 @@ def save_mock_data(data, output_dir="data", base_filename="improved_mock_data"):
     csv_path = output_dir_path / f"{base_filename}.csv"
     try:
         df = pd.DataFrame(data)
-        # Ensure consistent column order based on typical flat format
-        cols_order = ['id', 'task_type', 'model', 'question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
-        # Add any extra columns found in the data
-        extra_cols = sorted([col for col in df.columns if col not in cols_order])
-        final_cols = [col for col in cols_order if col in df.columns] + extra_cols
+        # Define column order, 'contexts' removed
+        cols_order = ['id', 'task_type', 'model', 'test_description', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
+        # Add any extra columns found in the data not in the predefined order
+        present_cols_in_order = [col for col in cols_order if col in df.columns]
+        extra_cols = sorted([col for col in df.columns if col not in present_cols_in_order])
+        final_cols = present_cols_in_order + extra_cols
+        
         df = df[final_cols]
         # Fill NaN with empty string for CSV
         df.fillna('', inplace=True)
@@ -251,7 +258,7 @@ if __name__ == "__main__":
         project_root_if_direct = current_dir.parent
         if str(project_root_if_direct) not in sys.path:
             sys.path.insert(0, str(project_root_if_direct))
-        from tasks.task_registry import RAG_FAQ, SUMMARIZATION, CLASSIFICATION, CHATBOT
+        # from tasks.task_registry import RAG_FAQ, SUMMARIZATION, CLASSIFICATION, CHATBOT # Not strictly needed for running this script directly if constants are redefined
     except ImportError:
         print("Could not re-import task constants when run directly.")
 
@@ -260,4 +267,4 @@ if __name__ == "__main__":
     data_dir = project_root / "data"
 
     mock_data = generate_mock_data_flat(num_samples_per_task=3)
-    save_mock_data(mock_data, output_dir=data_dir, base_filename="llm_eval_mock_data") # Use a descriptive name
+    save_mock_data(mock_data, output_dir=data_dir, base_filename="llm_eval_mock_data_no_contexts") # Use a descriptive name

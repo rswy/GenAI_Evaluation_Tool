@@ -12,7 +12,7 @@ METRIC_INFO = {
     "f1_score": {"higher_is_better": True},
     "fact_presence_score": {"higher_is_better": True},
     "completeness_score": {"higher_is_better": True},
-    "length_ratio": {"higher_is_better": False}, # Lower is better
+    "length_ratio": {"higher_is_better": False}, # Closer to 1 is often better, but False implies lower is generally preferred if not 1.
     "safety_keyword_score": {"higher_is_better": True}, # Higher means fewer keywords
     "pii_detection_score": {"higher_is_better": True}  # Higher means fewer PII patterns
     # Add other metrics here if they appear in aggregated results
@@ -21,6 +21,7 @@ METRIC_INFO = {
 def generate_report(individual_scores_df, aggregated_scores_df, output_dir="reports"):
     """
     Generates evaluation reports from both individual and aggregated results.
+    'contexts' field has been removed from consideration in column ordering.
 
     Args:
         individual_scores_df (pd.DataFrame): DataFrame with scores for each test case.
@@ -37,18 +38,25 @@ def generate_report(individual_scores_df, aggregated_scores_df, output_dir="repo
         print(f"\n--- Generating Detailed Individual Scores (CSV) ---")
         try:
             # Reorder columns for better readability: original inputs first, then metrics
-            original_input_cols = ['id', 'task_type', 'model', 'question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
+            # 'contexts' removed from this list
+            original_input_cols = ['id', 'task_type', 'model', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
             present_original_cols = [col for col in original_input_cols if col in individual_scores_df.columns]
+            
+            # Identify metric columns - any column not in present_original_cols and not a special/internal column
+            # This assumes that all other columns are metric scores.
+            # If there are other non-metric columns, they might need explicit exclusion.
             metric_cols = sorted([col for col in individual_scores_df.columns if col not in present_original_cols])
             
             # Ensure 'id' is first if present
+            final_order = []
             if 'id' in present_original_cols:
+                final_order.append('id')
                 present_original_cols.remove('id')
-                final_order = ['id'] + present_original_cols + metric_cols
-            else:
-                final_order = present_original_cols + metric_cols
             
-            # Filter out columns not present in DataFrame to avoid KeyError
+            final_order.extend(present_original_cols)
+            final_order.extend(metric_cols)
+            
+            # Filter out columns not present in DataFrame to avoid KeyError (though they should be if logic is correct)
             final_order = [col for col in final_order if col in individual_scores_df.columns]
 
 
@@ -77,14 +85,16 @@ def generate_report(individual_scores_df, aggregated_scores_df, output_dir="repo
                 agg_display_df = aggregated_scores_df.copy()
                 renamed_cols = {}
                 for col in agg_display_df.columns:
-                    if col in METRIC_INFO:
-                        indicator = "⬆️" if METRIC_INFO[col]["higher_is_better"] else "⬇️"
+                    metric_info_entry = METRIC_INFO.get(col)
+                    if metric_info_entry: # Check if the column is a known metric
+                        indicator = "⬆️" if metric_info_entry.get("higher_is_better", True) else "⬇️" # Default to True if not specified
                         renamed_cols[col] = f"{col} {indicator}"
                 agg_display_df.rename(columns=renamed_cols, inplace=True)
 
                 f.write(agg_display_df.to_markdown(index=False, floatfmt=".4f"))
                 f.write("\n\n")
-                f.write(f"Detailed individual scores are available in the accompanying CSV: `evaluation_report_individual_scores_{timestamp}.csv`\n")
+                if individual_scores_df is not None and not individual_scores_df.empty:
+                    f.write(f"Detailed individual scores are available in the accompanying CSV: `evaluation_report_individual_scores_{timestamp}.csv`\n")
             print(f"Aggregated Markdown report saved to: {agg_md_path}")
         except Exception as e:
             print(f"Error generating aggregated Markdown report: {e}")
