@@ -2,13 +2,14 @@
 from .base_metric import BaseMetric
 import warnings
 # import re # Not used here
-# import numpy as np # Not used
+import numpy as np # For float('nan')
 import pandas as pd # For pd.notna, though str checks often suffice
 
 class FactPresenceMetric(BaseMetric):
     """
     Checks for the presence of predefined facts in a single prediction.
     Assumes facts are provided as a list in reference_field_values for the instance.
+    Returns NaN if no facts are provided for checking.
     """
     def compute(self, references, predictions, **kwargs):
         # `references` is the primary reference text for the single instance (not directly used by this metric)
@@ -19,17 +20,11 @@ class FactPresenceMetric(BaseMetric):
         prediction_str = str(predictions) if predictions is not None else ""
         ref_values_for_instance = kwargs.get('reference_field_values', {})
         
-        # Debugging print
-        # print(f"\n--- DEBUG FactPresence Instance ---")
-        # print(f"  Prediction (lower): '{prediction_str.lower()[:200]}...'")
-        # print(f"  Ref Values for Instance: {ref_values_for_instance}")
-
         facts_list_for_instance = ref_values_for_instance.get('facts', [])
 
         if not isinstance(facts_list_for_instance, list) or not facts_list_for_instance:
-            # print(f"  No facts list or empty. Score: 0.0")
-            # print(f"--- End DEBUG FactPresence Instance ---\n")
-            return {"fact_presence_score": 0.0} # Or float('nan')
+            # If no facts are provided to check against, the metric is not applicable.
+            return {"fact_presence_score": np.nan} 
 
         pred_lower = prediction_str.lower()
         facts_found = 0
@@ -39,9 +34,7 @@ class FactPresenceMetric(BaseMetric):
                 if fact_lower in pred_lower:
                     facts_found += 1
         
-        instance_score = facts_found / len(facts_list_for_instance) if facts_list_for_instance else 0.0
+        # Score is calculated only if facts_list_for_instance is not empty (handled by the NaN return above)
+        instance_score = facts_found / len(facts_list_for_instance)
         
-        # print(f"  Facts Found: {facts_found} / {len(facts_list_for_instance)}")
-        # print(f"  Instance Score: {instance_score}")
-        # print(f"--- End DEBUG FactPresence Instance ---\n")
         return {"fact_presence_score": instance_score}
