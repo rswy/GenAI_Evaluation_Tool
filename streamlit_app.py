@@ -14,9 +14,10 @@ import warnings
 import matplotlib # Keep for colormap
 import matplotlib.cm as cm # Keep for colormap
 import copy # Keep for deepcopy if used
+import traceback # For error logging
 
 # --- Add project root to sys.path ---
-project_root = Path(__file__).resolve().parent # Use resolve()
+project_root = Path(__file__).resolve().parent 
 data_dir = project_root / "data"
 src_path = project_root / "src"
 if str(src_path) not in sys.path:
@@ -25,10 +26,10 @@ if str(src_path) not in sys.path:
 # --- Import framework functions ---
 try:
     from data_loader import load_data
-    from evaluator import evaluate_model_responses # Returns two DataFrames now
+    from evaluator import evaluate_model_responses 
     from file_converter import convert_excel_to_data, convert_csv_to_data
-    from mock_data_generator import generate_mock_data_flat, save_mock_data
-    from tasks.task_registry import get_metrics_for_task, get_supported_tasks, RAG_FAQ, SUMMARIZATION, CLASSIFICATION, CHATBOT
+    from mock_data_generator import generate_mock_data_flat 
+    from tasks.task_registry import get_metrics_for_task, get_supported_tasks, RAG_FAQ, SUMMARIZATION, CLASSIFICATION, CHATBOT, CUSTOM_METRIC_KWARG_MAP
 except ImportError as e:
     st.error(f"Framework Import Error: {e}. Please ensure all necessary files are in the 'src' directory and Python environment is set up correctly.")
     st.error(f"Current sys.path: {sys.path}")
@@ -41,7 +42,7 @@ CAT_CLASSIFICATION = "Classification Accuracy"; CAT_CONCISENESS = "Conciseness";
 CAT_PII_SAFETY = "Privacy/Sensitive Data"; CAT_TONE = "Tone & Professionalism"; CAT_REFUSAL = "Refusal Appropriateness"
 
 DIMENSION_DESCRIPTIONS = {
-    CAT_TRUST: "Metrics assessing the reliability and factual correctness of the LLM's output, aiming to minimize hallucinations and ensure grounding in provided contexts for RAG tasks.",
+    CAT_TRUST: "Metrics assessing the reliability and factual correctness of the LLM's output, aiming to minimize hallucinations.",
     CAT_COMPLETENESS: "Metrics evaluating if the LLM response addresses all necessary aspects or key points required by the input query or task instructions.",
     CAT_FLUENCY: "Metrics judging the linguistic quality of the LLM's output, including grammatical correctness, coherence, and similarity to human-like language.",
     CAT_CLASSIFICATION: "Metrics specifically for classification tasks, measuring the accuracy of the LLM in assigning correct labels or categories.",
@@ -51,9 +52,9 @@ DIMENSION_DESCRIPTIONS = {
     CAT_TONE: "Metrics (often placeholders) for assessing the professionalism, politeness, or other specific tonal qualities of the LLM's output.",
     CAT_REFUSAL: "Metrics (often placeholders) for evaluating the appropriateness of the LLM's refusals to answer certain queries, especially those that are out-of-scope, sensitive, or harmful."
 }
-METRIC_INFO = {
-    "fact_presence_score": {"name": "Fact Presence", "category": CAT_TRUST, "higher_is_better": True, "explanation": "Checks if predefined factual statements (from `ref_facts` column) are mentioned in the model's answer. Higher score indicates more listed facts were found.", "tasks": [RAG_FAQ]},
-    "completeness_score": {"name": "Checklist Completeness", "category": CAT_COMPLETENESS, "higher_is_better": True, "explanation": "Assesses if predefined key topics or items (from `ref_key_points` column) are mentioned in the model's answer. Higher score means more points were covered.", "tasks": [RAG_FAQ, SUMMARIZATION]},
+METRIC_INFO = { 
+    "fact_presence_score": {"name": "Fact Presence", "category": CAT_TRUST, "higher_is_better": True, "explanation": "Checks if predefined factual statements (from `ref_facts` column) are mentioned in the model's answer. Higher score indicates more listed facts were found.", "tasks": [RAG_FAQ], "input_field_form_label": "Reference Facts", "input_field_data_key": "ref_facts"},
+    "completeness_score": {"name": "Checklist Completeness", "category": CAT_COMPLETENESS, "higher_is_better": True, "explanation": "Assesses if predefined key topics or items (from `ref_key_points` column) are mentioned in the model's answer. Higher score means more points were covered.", "tasks": [RAG_FAQ, SUMMARIZATION], "input_field_form_label": "Reference Key Points", "input_field_data_key": "ref_key_points"},
     "bleu": {"name": "BLEU", "category": CAT_FLUENCY, "higher_is_better": True, "explanation": "Measures n-gram precision overlap between the model's answer and the ground truth, indicating sequence similarity. Higher score means more similar sequences.", "tasks": [RAG_FAQ, SUMMARIZATION, CHATBOT]},
     "rouge_1": {"name": "ROUGE-1", "category": CAT_FLUENCY, "higher_is_better": True, "explanation": "Measures unigram (single word) recall overlap. Higher score indicates more matching words with the ground truth.", "tasks": [RAG_FAQ, SUMMARIZATION, CHATBOT]},
     "rouge_2": {"name": "ROUGE-2", "category": CAT_FLUENCY, "higher_is_better": True, "explanation": "Measures bigram (two-word phrase) recall overlap. Higher score indicates more matching short phrases with the ground truth.", "tasks": [RAG_FAQ, SUMMARIZATION, CHATBOT]},
@@ -64,23 +65,29 @@ METRIC_INFO = {
     "recall": {"name": "Recall", "category": CAT_CLASSIFICATION, "higher_is_better": True, "explanation": "Of actual positives, the fraction correctly predicted. Higher score means fewer false negatives. (Note: Aggregated score is standard; individual is 1.0/0.0 for the pair based on a specific class perspective).", "tasks": [CLASSIFICATION]},
     "f1_score": {"name": "F1-Score", "category": CAT_CLASSIFICATION, "higher_is_better": True, "explanation": "Harmonic mean of Precision and Recall, providing a balance between them. (Note: Aggregated score is standard; individual is 1.0/0.0 for the pair based on a specific class perspective).", "tasks": [CLASSIFICATION]},
     "length_ratio": {"name": "Length Ratio", "category": CAT_CONCISENESS, "higher_is_better": False, "explanation": "Ratio of the model answer's word count to the ground truth's word count. Closer to 1.0 is often desired; significantly higher or lower may indicate verbosity or brevity issues.", "tasks": [RAG_FAQ, SUMMARIZATION, CHATBOT]},
-    "safety_keyword_score": {"name": "Safety Keyword Score", "category": CAT_SAFETY, "higher_is_better": True, "explanation": "Basic check: 1.0 if response does NOT contain predefined unsafe keywords, 0.0 otherwise. Higher means fewer problematic keywords detected.", "tasks": [RAG_FAQ, SUMMARIZATION, CHATBOT]},
-    "pii_detection_score": {"name": "PII Detection Score", "category": CAT_PII_SAFETY, "higher_is_better": True, "explanation": "Basic regex check: 1.0 if response does NOT contain common PII patterns, 0.0 otherwise. Higher means fewer PII patterns found. WARNING: Not a comprehensive PII scan.", "tasks": [RAG_FAQ, CHATBOT]},
+    "safety_keyword_score": {"name": "Safety Keyword Score (Placeholder)", "category": CAT_SAFETY, "higher_is_better": True, "explanation": "Basic check: 1.0 if response does NOT contain predefined unsafe keywords, 0.0 otherwise. Higher means fewer problematic keywords detected.", "tasks": [RAG_FAQ, SUMMARIZATION, CHATBOT]},
+    "pii_detection_score": {"name": "PII Detection Score (Placeholder)", "category": CAT_PII_SAFETY, "higher_is_better": True, "explanation": "Basic regex check: 1.0 if response does NOT contain common PII patterns, 0.0 otherwise. Higher means fewer PII patterns found. WARNING: Not a comprehensive PII scan.", "tasks": [RAG_FAQ, CHATBOT]},
     "professional_tone_score": {"name": "Professional Tone (Placeholder)", "category": CAT_TONE, "higher_is_better": True, "explanation": "Placeholder for professional tone evaluation. Requires a dedicated classifier or LLM-as-judge implementation.", "tasks": [RAG_FAQ, CHATBOT]},
     "refusal_quality_score": {"name": "Refusal Quality (Placeholder)", "category": CAT_REFUSAL, "higher_is_better": True, "explanation": "Placeholder for evaluating the appropriateness of model refusals. Requires specific test cases and logic.", "tasks": [RAG_FAQ, CHATBOT]},
-    "nli_entailment_score": {"name": "NLI Entailment (Placeholder)", "category": CAT_TRUST, "higher_is_better": True, "explanation": "Placeholder for Natural Language Inference based fact-checking or groundedness. Requires an NLI model.", "tasks": [RAG_FAQ]},
+    "nli_entailment_score": {"name": "NLI Entailment (Placeholder)", "category": CAT_TRUST, "higher_is_better": True, "explanation": "Placeholder for Natural Language Inference based fact-checking. Requires an NLI model.", "tasks": [RAG_FAQ]},
     "llm_judge_factuality": {"name": "LLM Judge Factuality (Placeholder)", "category": CAT_TRUST, "higher_is_better": True, "explanation": "Placeholder for using another LLM to judge factuality. Requires LLM API access and prompt engineering.", "tasks": [RAG_FAQ]},
 }
 METRICS_BY_CATEGORY = defaultdict(list)
 CATEGORY_ORDER = [CAT_TRUST, CAT_COMPLETENESS, CAT_FLUENCY, CAT_CLASSIFICATION, CAT_CONCISENESS, CAT_SAFETY, CAT_PII_SAFETY, CAT_TONE, CAT_REFUSAL]
 for key, info in METRIC_INFO.items(): METRICS_BY_CATEGORY[info['category']].append(key)
 
+REQUIRED_FIELDS_ADD_ROW = ['task_type', 'model', 'question', 'ground_truth', 'answer']
+OPTIONAL_FIELDS_ADD_ROW_INFO = {
+    "ref_facts": {"label": "Reference Facts (comma-separated)", "placeholder": "fact A,fact B", "metric_info": "for Fact Presence metric"},
+    "ref_key_points": {"label": "Reference Key Points (comma-separated)", "placeholder": "point 1,point 2", "metric_info": "for Checklist Completeness metric"},
+    "test_description": {"label": "Test Description", "placeholder": "Briefly describe this test case's purpose...", "metric_info": "Optional metadata"}
+}
+
 def get_metric_display_name(metric_key, include_placeholder_tag=True):
-    """Gets the display name for a metric, optionally including a placeholder tag."""
     info = METRIC_INFO.get(metric_key, {})
     name = info.get('name', metric_key.replace('_', ' ').title())
     if include_placeholder_tag and is_placeholder_metric(metric_key): 
-        if "(Placeholder)" not in name: # Avoid double-tagging
+        if "(Placeholder)" not in name: 
             name += " (Placeholder)"
     return name
 
@@ -88,7 +95,6 @@ def get_metric_indicator(metric_key):
     info = METRIC_INFO.get(metric_key); return "⬆️" if info and info["higher_is_better"] else ("⬇️" if info else "")
 
 def is_placeholder_metric(metric_key):
-    """Checks if a metric is a placeholder based on its name in METRIC_INFO."""
     info = METRIC_INFO.get(metric_key, {})
     return "(Placeholder)" in info.get("name", "")
 
@@ -122,7 +128,7 @@ def apply_color_gradient(styler, metric_info_dict_local):
                 vmin = data_col.min() if not data_col.empty else 0.0
                 vmax = data_col.max() if not data_col.empty else 1.0
                 
-                if vmin == vmax:
+                if vmin == vmax: 
                     mid_point = 0.5 
                     color_val = 0.0 
                     if info['higher_is_better']:
@@ -132,7 +138,7 @@ def apply_color_gradient(styler, metric_info_dict_local):
                         if vmin < mid_point: color_val = 1.0 
                         elif np.isclose(vmin, mid_point): color_val = 0.5 
                     styler.background_gradient(cmap=matplotlib.colors.ListedColormap([cmap_to_use(color_val)]), subset=[col_name_display])
-                else:
+                else: 
                     gradient_vmin = min(0.0, vmin) if pd.notna(vmin) else 0.0
                     gradient_vmax = max(1.0, vmax) if pd.notna(vmax) else 1.0
                     if gradient_vmin == gradient_vmax: 
@@ -159,12 +165,10 @@ def apply_color_gradient(styler, metric_info_dict_local):
             
             if original_mkey_for_format and pd.api.types.is_numeric_dtype(styler.data[col_disp_name]):
                  format_dict[col_disp_name] = '{:.4f}'
-            # Check if it's one of the new interpretation columns, which should be displayed as strings
-            elif col_disp_name in ['Observations', 'Potential Actions']:
-                pass # No specific numeric formatting
+            elif col_disp_name in ['Observations', 'Potential Actions', 'Metrics Not Computed or Not Applicable']: 
+                pass 
             elif styler.data[col_disp_name].dtype == 'object' and any(isinstance(x, float) for x in styler.data[col_disp_name].dropna()):
                  format_dict[col_disp_name] = lambda x: f"{x:.4f}" if isinstance(x, float) else x
-
 
     styler.format(formatter=format_dict, na_rep='NaN')
     return styler
@@ -172,7 +176,7 @@ def apply_color_gradient(styler, metric_info_dict_local):
 def unflatten_df_to_test_cases(df):
     test_cases_list = []
     if df is None or df.empty: return []
-    direct_keys = ['id', 'task_type', 'model', 'question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
+    direct_keys = ['id', 'task_type', 'model', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
     for _, row_series in df.iterrows():
         row = row_series.to_dict()
         case = {}
@@ -190,97 +194,238 @@ def unflatten_df_to_test_cases(df):
     return test_cases_list
 
 def generate_single_case_interpretation(case_row, task_type):
-    """Generates observations and suggestions for a single test case row."""
     observations = []
     suggestions = []
+    not_applicable_metrics = [] # For metrics that are placeholders or had missing input
+
+    overall_assessment_flags = { 
+        "fluency": None, "factuality": None, "completeness": None, 
+        "classification": None, "conciseness": None, "safety": None, "privacy": None
+    }
+
+    def was_input_provided(metric_key, case_data):
+        metric_detail = METRIC_INFO.get(metric_key)
+        if metric_detail and "input_field_data_key" in metric_detail:
+            input_key = metric_detail["input_field_data_key"]
+            return input_key in case_data and pd.notna(case_data[input_key]) and str(case_data[input_key]).strip()
+        return True 
+
+    # --- Fluency & Similarity (BLEU, ROUGEs, METEOR) ---
+    fluency_metric_keys = ['bleu', 'rouge_1', 'rouge_2', 'rouge_l', 'meteor']
+    valid_fluency_scores = []
+    has_any_fluency_metric = any(key in case_row for key in fluency_metric_keys)
     
-    # Fluency & Similarity
-    fluency_scores_present = {m: case_row.get(m) for m in ['bleu', 'rouge_l', 'meteor'] if m in case_row and pd.notna(case_row.get(m)) and not is_placeholder_metric(m)}
-    if fluency_scores_present:
-        # Calculate mean only if there are valid (non-NaN) scores
-        valid_fluency_scores = [s for s in fluency_scores_present.values() if pd.notna(s)]
-        if valid_fluency_scores:
-            avg_fluency = np.mean(valid_fluency_scores)
-            if avg_fluency < 0.2: 
-                observations.append(f"Low fluency/similarity to reference (avg: {avg_fluency:.2f}).")
-                suggestions.append("Review for linguistic issues or significant deviation from reference phrasing.")
-            elif avg_fluency < 0.5:
-                observations.append(f"Moderate fluency/similarity (avg: {avg_fluency:.2f}).")
-        elif any(pd.notna(s) for s in fluency_scores_present.values()): # Some scores present but all were NaN after filtering
-             observations.append("Fluency scores present but NaN, check metric calculation for this case.")
+    for key in fluency_metric_keys:
+        if key in case_row and pd.notna(case_row[key]) and not is_placeholder_metric(key):
+            valid_fluency_scores.append(case_row[key])
+        elif key in case_row and pd.isna(case_row[key]) and not is_placeholder_metric(key):
+            not_applicable_metrics.append(f"{METRIC_INFO.get(key, {}).get('name', key)}: Score is NaN (Calculation Error or N/A).")
 
 
-    # Trust & Factuality
-    fact_presence = case_row.get('fact_presence_score')
-    if pd.notna(fact_presence) and not is_placeholder_metric('fact_presence_score'):
-        if fact_presence < 0.4: 
-            observations.append(f"Low inclusion of specified facts ({fact_presence:.2f}).")
-            suggestions.append("Check if critical facts from `ref_facts` are missing in the answer.")
-        elif fact_presence < 0.7:
-            observations.append(f"Moderate inclusion of facts ({fact_presence:.2f}).")
+    if valid_fluency_scores:
+        avg_fluency = np.mean(valid_fluency_scores)
+        if avg_fluency >= 0.6:
+            observations.append(f"✅ Fluency & Similarity: Strong (Avg. Score: {avg_fluency:.2f}). The response is highly coherent and closely aligns with the reference text in terms of wording, phrasing, and structure, indicating good linguistic quality.")
+            overall_assessment_flags["fluency"] = "good"
+        elif avg_fluency >= 0.3:
+            observations.append(f"⚠️ Fluency & Similarity: Moderate (Avg. Score: {avg_fluency:.2f}). The response is generally understandable but shows noticeable differences from the reference text, suggesting some areas for improvement in phrasing or structure.")
+            overall_assessment_flags["fluency"] = "moderate"
+        else:
+            observations.append(f"❌ Fluency & Similarity: Low (Avg. Score: {avg_fluency:.2f}). The response may have significant grammatical issues, incoherence, or deviate largely from the reference text, indicating potential problems with linguistic quality.")
+            overall_assessment_flags["fluency"] = "poor"
+            suggestions.append("Review the response for clarity, grammatical correctness, and overall relevance. Consider prompt adjustments or fine-tuning the model if fluency scores are consistently low across similar test cases.")
+    elif has_any_fluency_metric and not valid_fluency_scores: # Fluency metrics were present but all were NaN
+        pass # Already added to not_applicable_metrics
 
-    # Completeness
-    completeness = case_row.get('completeness_score')
-    if pd.notna(completeness) and not is_placeholder_metric('completeness_score'):
-        if completeness < 0.4: 
-            observations.append(f"Low coverage of key points ({completeness:.2f}).")
-            suggestions.append("Verify if all essential topics from `ref_key_points` were addressed.")
-        elif completeness < 0.7:
-            observations.append(f"Moderate coverage of key points ({completeness:.2f}).")
+    # --- Trust & Factuality (Fact Presence) ---
+    metric_key_fp = 'fact_presence_score'
+    score_fp = case_row.get(metric_key_fp)
+    if metric_key_fp in case_row:
+        if is_placeholder_metric(metric_key_fp):
+            not_applicable_metrics.append(f"{METRIC_INFO[metric_key_fp]['name']}: Placeholder - Not Implemented.")
+        elif not was_input_provided(metric_key_fp, case_row):
+            not_applicable_metrics.append(f"{METRIC_INFO[metric_key_fp]['name']}: Not applicable (missing input: `ref_facts`).")
+        elif pd.notna(score_fp):
+            if score_fp >= 0.7:
+                observations.append(f"✅ Fact Presence: Good ({score_fp:.2f}). Most specified facts appear to be included.")
+                overall_assessment_flags["factuality"] = "good"
+            elif score_fp >= 0.4:
+                observations.append(f"⚠️ Fact Presence: Moderate ({score_fp:.2f}). Some specified facts might be missing or altered.")
+                overall_assessment_flags["factuality"] = "moderate"
+            else: # < 0.4
+                observations.append(f"❌ Fact Presence: Low ({score_fp:.2f}). A significant number of specified facts seem to be missing from the response.")
+                overall_assessment_flags["factuality"] = "poor"
+                suggestions.append("Verify if critical facts from the `ref_facts` input are missing or inaccurately represented in the model's answer.")
+        elif pd.isna(score_fp): 
+            not_applicable_metrics.append(f"{METRIC_INFO[metric_key_fp]['name']}: Score is NaN (Input `ref_facts` was provided; review metric calculation or data).")
 
-    # Classification (Accuracy is 1 or 0 for individual)
-    accuracy = case_row.get('accuracy')
-    if task_type == CLASSIFICATION and pd.notna(accuracy) and not is_placeholder_metric('accuracy'):
-        if accuracy < 1.0: # essentially if accuracy is 0 for the instance
-            observations.append("Incorrect classification.")
-            suggestions.append("Analyze why this specific case was misclassified.")
-    
-    # Conciseness
+    # --- Completeness (Checklist Completeness) ---
+    metric_key_cc = 'completeness_score'
+    score_cc = case_row.get(metric_key_cc)
+    if metric_key_cc in case_row:
+        if is_placeholder_metric(metric_key_cc):
+            not_applicable_metrics.append(f"{METRIC_INFO[metric_key_cc]['name']}: Placeholder - Not Implemented.")
+        elif not was_input_provided(metric_key_cc, case_row):
+            not_applicable_metrics.append(f"{METRIC_INFO[metric_key_cc]['name']}: Not applicable (missing input: `ref_key_points`).")
+        elif pd.notna(score_cc):
+            if score_cc >= 0.7:
+                observations.append(f"✅ Checklist Completeness: Good ({score_cc:.2f}). Most key points appear to be covered.")
+                overall_assessment_flags["completeness"] = "good"
+            elif score_cc >= 0.4:
+                observations.append(f"⚠️ Checklist Completeness: Moderate ({score_cc:.2f}). Some key points might be unaddressed.")
+                overall_assessment_flags["completeness"] = "moderate"
+            else: # < 0.4
+                observations.append(f"❌ Checklist Completeness: Low ({score_cc:.2f}). Significant key points seem to be missing from the response.")
+                overall_assessment_flags["completeness"] = "poor"
+                suggestions.append("Verify if all essential topics from the `ref_key_points` input were adequately addressed by the model's answer.")
+        elif pd.isna(score_cc):
+             not_applicable_metrics.append(f"{METRIC_INFO[metric_key_cc]['name']}: Score is NaN (Input `ref_key_points` was provided; review metric calculation or data).")
+
+    # --- Classification Accuracy ---
+    if task_type == CLASSIFICATION:
+        accuracy = case_row.get('accuracy')
+        f1 = case_row.get('f1_score') # F1 is often more informative for classification
+        if 'accuracy' in case_row and not is_placeholder_metric('accuracy'):
+            if pd.notna(accuracy):
+                if accuracy < 1.0:
+                    observations.append(f"❌ Classification: Incorrect (Accuracy: {accuracy:.2f}). The model's prediction did not match the ground truth label.")
+                    overall_assessment_flags["classification"] = "incorrect"
+                    suggestions.append("Analyze why this specific case was misclassified. Review the input text and ground truth label. Consider if the model needs more examples of this type or if features are ambiguous.")
+                    if pd.notna(f1): observations.append(f"   (F1-score for this instance: {f1:.2f})")
+                else:
+                    observations.append(f"✅ Classification: Correct (Accuracy: {accuracy:.2f}). The model correctly predicted the label.")
+                    overall_assessment_flags["classification"] = "correct"
+                    if pd.notna(f1): observations.append(f"   (F1-score for this instance: {f1:.2f})")
+            elif pd.isna(accuracy): 
+                 not_applicable_metrics.append("Classification Accuracy: Score is NaN (Review metric calculation).")
+
+    # --- Conciseness (Length Ratio) ---
     length_ratio = case_row.get('length_ratio')
-    if pd.notna(length_ratio) and not is_placeholder_metric('length_ratio'):
-        if length_ratio < 0.5: 
-            observations.append(f"Response significantly shorter than reference (Ratio: {length_ratio:.2f}).")
-            suggestions.append("Check if response is too brief or truncated.")
-        elif length_ratio > 1.75: 
-            observations.append(f"Response significantly longer than reference (Ratio: {length_ratio:.2f}).")
-            suggestions.append("Check if response is too verbose or includes irrelevant details.")
+    if 'length_ratio' in case_row and not is_placeholder_metric('length_ratio'):
+        if pd.notna(length_ratio):
+            if length_ratio < 0.5: 
+                observations.append(f"⚠️ Conciseness: Response is significantly shorter (ratio: {length_ratio:.2f}) than the reference. It might be too brief, potentially missing details, or truncated.")
+                overall_assessment_flags["conciseness"] = "too_short"
+                suggestions.append("Check if the response is overly brief or truncated. If it's missing information, prompt for more detail or adjust length constraints.")
+            elif length_ratio < 0.8:
+                observations.append(f"ℹ️ Conciseness: Response is noticeably shorter (ratio: {length_ratio:.2f}) than the reference. Assess if this brevity is appropriate for the query.")
+                overall_assessment_flags["conciseness"] = "short"
+            elif length_ratio <= 1.25: # Ideal range
+                observations.append(f"✅ Conciseness: Response length (ratio: {length_ratio:.2f}) is comparable to the reference, suggesting appropriate verbosity.")
+                overall_assessment_flags["conciseness"] = "good"
+            elif length_ratio <= 1.75:
+                observations.append(f"ℹ️ Conciseness: Response is noticeably longer (ratio: {length_ratio:.2f}) than the reference. Assess if the additional length adds value or is just verbose.")
+                overall_assessment_flags["conciseness"] = "long"
+            else: # > 1.75
+                observations.append(f"⚠️ Conciseness: Response is significantly longer (ratio: {length_ratio:.2f}) than the reference. It might be too verbose, include irrelevant details, or 'ramble'.")
+                overall_assessment_flags["conciseness"] = "too_long"
+                suggestions.append("Check if the response is too verbose or includes irrelevant details. Consider prompting for conciseness or setting stricter length limits if appropriate.")
+        elif pd.isna(length_ratio):
+             not_applicable_metrics.append("Length Ratio: Score is NaN (Review metric calculation).")
 
-    # Safety
+    # --- Safety & Privacy ---
     safety_score = case_row.get('safety_keyword_score')
-    if pd.notna(safety_score) and not is_placeholder_metric('safety_keyword_score') and safety_score < 1.0:
-        observations.append("Potential safety keyword detected.")
-        suggestions.append("MANUAL REVIEW REQUIRED for safety.")
-    
+    if 'safety_keyword_score' in case_row and not is_placeholder_metric('safety_keyword_score'):
+        if pd.notna(safety_score):
+            if safety_score < 1.0: # 0.0 means unsafe keyword found
+                observations.append("🚨 Safety: Potential safety keyword detected in the response.")
+                overall_assessment_flags["safety"] = "issue"
+                suggestions.append("MANUAL REVIEW REQUIRED for safety. Identify the problematic content and consider refining safety filters or prompts.")
+            else: # 1.0 means no unsafe keywords found
+                observations.append("✅ Safety: No pre-defined unsafe keywords detected by the basic check.")
+                overall_assessment_flags["safety"] = "ok"
+        elif pd.isna(safety_score):
+            not_applicable_metrics.append("Safety Keyword Score: Score is NaN (Review metric calculation).")
+
     pii_score = case_row.get('pii_detection_score')
-    if pd.notna(pii_score) and not is_placeholder_metric('pii_detection_score') and pii_score < 1.0:
-        observations.append("Potential PII pattern detected.")
-        suggestions.append("MANUAL REVIEW REQUIRED for PII.")
+    if 'pii_detection_score' in case_row and not is_placeholder_metric('pii_detection_score'):
+        if pd.notna(pii_score):
+            if pii_score < 1.0: # 0.0 means PII pattern found
+                observations.append("🚨 Privacy: Potential PII pattern detected in the response.")
+                overall_assessment_flags["privacy"] = "issue"
+                suggestions.append("MANUAL REVIEW REQUIRED for PII. Ensure sensitive data is not exposed and enhance PII detection/scrubbing if necessary.")
+            else: # 1.0 means no PII patterns found
+                observations.append("✅ Privacy: No common PII patterns detected by the basic regex check.")
+                overall_assessment_flags["privacy"] = "ok"
+        elif pd.isna(pii_score):
+            not_applicable_metrics.append("PII Detection Score: Score is NaN (Review metric calculation).")
+    
+    # Handle other placeholder metrics specifically for the "Not Applicable" section
+    placeholder_keys = ["professional_tone_score", "refusal_quality_score", "nli_entailment_score", "llm_judge_factuality"]
+    for pk in placeholder_keys:
+        if pk in case_row and is_placeholder_metric(pk) and pd.isna(case_row[pk]):
+            not_applicable_metrics.append(f"{METRIC_INFO[pk]['name']}: Placeholder - Not Implemented.")
+        elif pk in case_row and pd.notna(case_row[pk]) and is_placeholder_metric(pk): # Should not happen
+             not_applicable_metrics.append(f"{METRIC_INFO[pk]['name']}: Placeholder received unexpected score {case_row[pk]:.2f}.")
 
-    if not observations: observations.append("No immediate concerns based on these specific metrics for this case.")
-    if not suggestions: suggestions.append("No specific automated suggestions for this case. Review manually if scores are unexpectedly low.")
-    return "\n".join(f"- {o}" for o in observations), "\n".join(f"- {s}" for s in suggestions)
+
+    # --- Final Summary for Suggestions ---
+    final_suggestions = []
+    issues_found_text = []
+    positives_found_text = []
+
+    if overall_assessment_flags["fluency"] == "poor": issues_found_text.append("low fluency/similarity")
+    elif overall_assessment_flags["fluency"] == "good": positives_found_text.append("good fluency and similarity")
+    
+    if overall_assessment_flags["factuality"] == "poor": issues_found_text.append("low fact presence")
+    elif overall_assessment_flags["factuality"] == "good": positives_found_text.append("good fact presence")
+
+    if overall_assessment_flags["completeness"] == "poor": issues_found_text.append("low completeness")
+    elif overall_assessment_flags["completeness"] == "good": positives_found_text.append("good completeness")
+
+    if overall_assessment_flags["classification"] == "incorrect": issues_found_text.append("incorrect classification")
+    elif overall_assessment_flags["classification"] == "correct": positives_found_text.append("correct classification")
+
+    if overall_assessment_flags["conciseness"] == "too_short": issues_found_text.append("response being too short")
+    elif overall_assessment_flags["conciseness"] == "too_long": issues_found_text.append("response being too long")
+    elif overall_assessment_flags["conciseness"] == "good": positives_found_text.append("appropriate length")
+        
+    if overall_assessment_flags["safety"] == "issue": issues_found_text.append("potential safety concerns")
+    if overall_assessment_flags["privacy"] == "issue": issues_found_text.append("potential PII exposure")
+
+    if issues_found_text:
+        summary_statement = f"Overall, the response shows potential concerns regarding: {', '.join(issues_found_text)}. "
+        if positives_found_text:
+            summary_statement += f"However, it performed well in: {', '.join(positives_found_text)}. "
+        summary_statement += "Consider the specific suggestions below to address the flagged areas."
+        final_suggestions.append(summary_statement)
+    elif positives_found_text:
+        final_suggestions.append(f"Overall, the response performed well regarding: {', '.join(positives_found_text)}. No major issues were flagged by the automated metrics for this test case.")
+    else: # No strong signals either way, or many metrics were not applicable
+        if not observations and not_applicable_metrics: # Only NaN/Placeholder info
+             final_suggestions.append("Most metrics were not applicable or not computed for this case. Manual review is needed if specific evaluations were expected.")
+        elif not observations and not not_applicable_metrics: # No observations at all
+             final_suggestions.append("No specific issues or strengths flagged by automated metrics for this test case. Manual review is recommended for nuanced aspects.")
 
 
-# --- Streamlit App Configuration ---
+    final_suggestions.extend(suggestions) # Add specific suggestions collected earlier
+    if not final_suggestions: # Ensure there's always some text for potential actions
+        final_suggestions.append("Review the case manually to assess performance against any specific, unmeasured criteria.")
+
+
+    if not observations and not_applicable_metrics: # If only "Not Applicable" info, don't show empty observations
+        observations.append("No specific metric observations to display (scores might be NaN or metrics not applicable). See 'Metrics Not Computed or Not Applicable' section below.")
+    elif not observations:
+        observations.append("No specific metric observations generated. All computed scores might be within generally acceptable ranges.")
+    
+    return "\n".join(f"- {o}" for o in observations), "\n".join(f"- {s}" for s in final_suggestions), "\n".join(f"- {na}" for na in not_applicable_metrics)
+
+
 st.set_page_config(layout="wide", page_title="LLM Evaluation Framework")
 st.title("📊 LLM Evaluation Framework")
 st.markdown("Evaluate LLM performance using pre-generated responses. This tool now supports both **aggregated summaries** and **individual test case scores**.")
 
-# --- State Management ---
 default_state_keys = {
-    'test_cases_list_loaded': None,
-    'edited_test_cases_df': pd.DataFrame(),
-    'aggregated_results_df': None,
-    'individual_scores_df': None, 
-    'data_source_info': None,
-    'last_uploaded_file_name': None,
-    'metrics_for_agg_display': [] 
+    'test_cases_list_loaded': None, 'edited_test_cases_df': pd.DataFrame(),
+    'aggregated_results_df': None, 'individual_scores_df': None, 
+    'data_source_info': None, 'last_uploaded_file_name': None,
+    'metrics_for_agg_display': [],
+    'add_row_input_mode': "Easy (Required Fields Only)" 
 }
 for key, default_value in default_state_keys.items():
     if key not in st.session_state:
         st.session_state[key] = copy.deepcopy(default_value)
 
-# --- Sidebar ---
 st.sidebar.header("⚙️ Input Options")
 def clear_app_state():
     st.session_state.test_cases_list_loaded = None
@@ -291,21 +436,18 @@ def clear_app_state():
     st.session_state.metrics_for_agg_display = []
 
 input_method = st.sidebar.radio(
-    "Choose data source:",
-    ("Upload File", "Generate Mock Data"),
-    key="input_method_radio",
-    on_change=clear_app_state
+    "Choose data source:", ("Upload File", "Generate Mock Data"),
+    key="input_method_radio", on_change=clear_app_state
 )
 
 if input_method == "Upload File":
     uploaded_file = st.sidebar.file_uploader(
-        "Upload (.xlsx, .csv, .json - Flat Format)",
-        type=["xlsx", "csv", "json"],
-        key="file_uploader"
+        "Upload (.xlsx, .csv, .json - Flat Format)", type=["xlsx", "csv", "json"],
+        key="file_uploader_widget" 
     )
     if uploaded_file is not None:
         if uploaded_file.name != st.session_state.last_uploaded_file_name:
-            clear_app_state()
+            clear_app_state() 
             st.session_state.last_uploaded_file_name = uploaded_file.name
             file_suffix = Path(uploaded_file.name).suffix.lower()
             st.session_state.data_source_info = f"Processing: {uploaded_file.name}"
@@ -320,21 +462,25 @@ if input_method == "Upload File":
                     if file_suffix == ".xlsx": test_data_list_from_file = convert_excel_to_data(tmp_file_path)
                     elif file_suffix == ".csv": test_data_list_from_file = convert_csv_to_data(tmp_file_path)
                     elif file_suffix == ".json": test_data_list_from_file = load_data(tmp_file_path)
+                
                 if test_data_list_from_file:
                     st.session_state.test_cases_list_loaded = test_data_list_from_file
                     df_for_edit = pd.DataFrame(test_data_list_from_file)
-                    required_cols_editor = ['id', 'task_type', 'model', 'question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
+                    required_cols_editor = ['id', 'task_type', 'model', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
                     for col in required_cols_editor:
-                        if col not in df_for_edit.columns: df_for_edit[col] = None
+                        if col not in df_for_edit.columns: df_for_edit[col] = None 
                     st.session_state.edited_test_cases_df = df_for_edit.copy().fillna('')
                     st.session_state.data_source_info = f"Loaded {len(test_data_list_from_file)} rows from {uploaded_file.name} into editor."
                     st.sidebar.success(st.session_state.data_source_info)
                 else:
-                    if test_data_list_from_file == []: raise ValueError("File loaded but was empty or contained no valid data.")
-                    else: raise ValueError("Failed to load or convert data. Check file format and content.")
+                    if test_data_list_from_file == []: 
+                        raise ValueError("File loaded but was empty or contained no valid data.")
+                    else: 
+                        raise ValueError("Failed to load or convert data. Check file format and content.")
             except Exception as e:
                 st.session_state.data_source_info = f"Error processing {uploaded_file.name}: {e}"
                 st.sidebar.error(st.session_state.data_source_info); clear_app_state()
+                st.sidebar.text_area("Traceback", traceback.format_exc(), height=150)
             finally:
                 if tmp_file_path and tmp_file_path.exists():
                     try: os.unlink(tmp_file_path)
@@ -349,7 +495,7 @@ elif input_method == "Generate Mock Data":
             if mock_data_list:
                 st.session_state.test_cases_list_loaded = mock_data_list
                 df_for_edit = pd.DataFrame(mock_data_list)
-                required_cols_editor = ['id', 'task_type', 'model', 'question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
+                required_cols_editor = ['id', 'task_type', 'model', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points', 'test_description']
                 for col in required_cols_editor:
                     if col not in df_for_edit.columns: df_for_edit[col] = None
                 st.session_state.edited_test_cases_df = df_for_edit.copy().fillna('')
@@ -360,7 +506,6 @@ elif input_method == "Generate Mock Data":
             st.sidebar.error(f"Error generating mock data: {e}")
             st.sidebar.text_area("Traceback", traceback.format_exc(), height=150)
 
-# --- Main Content Area ---
 if st.session_state.data_source_info:
     if "error" in st.session_state.data_source_info.lower() or "failed" in st.session_state.data_source_info.lower() :
         st.error(st.session_state.data_source_info)
@@ -379,18 +524,21 @@ with tab_eval:
             st.session_state.metrics_for_agg_display = []
             with st.spinner("⏳ Evaluating... This may take a moment."):
                 try:
-                    df_to_process = st.session_state.edited_test_cases_df.replace('', np.nan)
+                    df_to_process = st.session_state.edited_test_cases_df.replace('', np.nan) 
                     test_cases_to_evaluate = unflatten_df_to_test_cases(df_to_process)
-                    if not test_cases_to_evaluate: raise ValueError("Data in editor is empty or could not be processed.")
+                    if not test_cases_to_evaluate: raise ValueError("Data in editor is empty or could not be processed into valid test cases.")
                     
                     individual_df_raw, aggregated_df = evaluate_model_responses(test_cases_to_evaluate)
                     
                     if individual_df_raw is not None and not individual_df_raw.empty:
-                        interpretations_series = individual_df_raw.apply(
+                        # generate_single_case_interpretation now returns three values
+                        interpretations_output = individual_df_raw.apply(
                             lambda row: generate_single_case_interpretation(row, row.get('task_type')), axis=1
                         )
-                        individual_df_raw['Observations'] = interpretations_series.apply(lambda x: x[0])
-                        individual_df_raw['Potential Actions'] = interpretations_series.apply(lambda x: x[1])
+                        individual_df_raw['Observations'] = interpretations_output.apply(lambda x: x[0])
+                        individual_df_raw['Potential Actions'] = interpretations_output.apply(lambda x: x[1])
+                        individual_df_raw['Metrics Not Computed or Not Applicable'] = interpretations_output.apply(lambda x: x[2])
+
                     
                     st.session_state.individual_scores_df = individual_df_raw 
                     st.session_state.aggregated_results_df = aggregated_df
@@ -401,12 +549,13 @@ with tab_eval:
                         for metric_col in metrics_present_in_agg: 
                             if pd.api.types.is_numeric_dtype(aggregated_df[metric_col]):
                                 is_all_zero_or_nan = (aggregated_df[metric_col].isna() | (aggregated_df[metric_col].abs() < 1e-9)).all()
-                                if not is_all_zero_or_nan: metrics_to_show_agg.append(metric_col)
+                                if not is_all_zero_or_nan: 
+                                    metrics_to_show_agg.append(metric_col)
                         st.session_state.metrics_for_agg_display = metrics_to_show_agg 
                         st.success("✅ Evaluation complete! View results below.")
                     elif individual_df_raw is not None and not individual_df_raw.empty:
-                         st.warning("⚠️ Evaluation produced individual scores, but aggregated results are empty.")
-                    else: st.warning("⚠️ Evaluation finished, but no results were produced.")
+                         st.warning("⚠️ Evaluation produced individual scores, but aggregated results are empty. This might happen if all metric scores were NaN or zero.")
+                    else: st.warning("⚠️ Evaluation finished, but no results (neither individual nor aggregated) were produced.")
                 except Exception as e:
                      st.error(f"Evaluation error: {e}"); st.error(f"Traceback: {traceback.format_exc()}")
         else: st.warning("No data in editor. Load or generate data first.")
@@ -415,18 +564,15 @@ with tab_eval:
     res_tab_ind, res_tab_agg = st.tabs(["📄 Individual Scores","📈 Aggregated Results"])
 
     with res_tab_agg:
-        # st.subheader("Aggregated Scores per Task & Model")
-
+        # ... (Aggregated results display - largely unchanged, ensure NaN handling in interpretations is consistent if applied here) ...
         st.success("Why Aggregated? \n Aggregated view transforms a collection of individual data points into meaningful insights about the LLM's overall behavior, strengths, weaknesses, and potential biases. It provides the necessary context to make informed decisions about model development, deployment, and ongoing monitoring.")
         if st.session_state.aggregated_results_df is not None and not st.session_state.aggregated_results_df.empty:
             agg_df = st.session_state.aggregated_results_df
-            
             metrics_to_display_non_placeholder = [
                 m_key for m_key in st.session_state.metrics_for_agg_display if not is_placeholder_metric(m_key)
             ]
-
             if not metrics_to_display_non_placeholder:
-                st.info("No non-placeholder metrics with valid scores to display in the aggregated summary. Displaying raw aggregated data if available (may include placeholders or all-zero/NaN metrics).")
+                st.info("No non-placeholder metrics with valid (non-zero, non-NaN) scores to display in the aggregated summary. Displaying raw aggregated data if available.")
                 simple_formatter = {col: "{:.4f}" for col in agg_df.select_dtypes(include=np.number).columns}
                 st.dataframe(agg_df.style.format(formatter=simple_formatter, na_rep='NaN'), use_container_width=True)
             else:
@@ -457,17 +603,18 @@ with tab_eval:
                                 if not info_bm : continue 
                                 higher_better_bm = info_bm.get('higher_is_better', True)
                                 valid_scores_df_bm = task_df_bm.dropna(subset=[metric_bm])
-                                if valid_scores_df_bm.empty: continue
+                                if valid_scores_df_bm.empty or (valid_scores_df_bm[metric_bm].abs() < 1e-9).all(): continue 
+                                
                                 best_score_idx_bm = valid_scores_df_bm[metric_bm].idxmax() if higher_better_bm else valid_scores_df_bm[metric_bm].idxmin()
                                 best_row_bm = valid_scores_df_bm.loc[best_score_idx_bm]
                                 best_model_bm = best_row_bm['model']
                                 best_score_val_bm = best_row_bm[metric_bm]
-                                if pd.notna(best_score_val_bm) and not np.isclose(best_score_val_bm, 0.0, atol=1e-9):
+                                if pd.notna(best_score_val_bm) and not np.isclose(best_score_val_bm, 0.0, atol=1e-9): 
                                     best_performers_details.append({
                                         "metric_name_display": f"{get_metric_display_name(metric_bm)} {get_metric_indicator(metric_bm)}", 
                                         "model": best_model_bm, "score": best_score_val_bm,
                                         "explanation": info_bm.get('explanation', 'N/A')})
-                            if not best_performers_details: st.markdown("_No significant highlights determined for this task._")
+                            if not best_performers_details: st.markdown("_No significant highlights determined for this task (all key metric scores might be zero or NaN)._")
                             else:
                                 highlights_by_model = defaultdict(list)
                                 for detail in best_performers_details: highlights_by_model[detail["model"]].append(detail)
@@ -478,7 +625,6 @@ with tab_eval:
                                         st.caption(f"  *Metric Meaning:* {highlight['explanation']}")
                                     st.markdown("---") 
                     st.markdown("---") 
-
                 st.markdown("#### 📊 Overall Summary Table (Aggregated by Task & Dimension)")
                 agg_df_display_overall = agg_df.copy()
                 renamed_cols_overall = {}
@@ -514,12 +660,11 @@ with tab_eval:
                 )
                 st.markdown("---")
 
-                # --- Interpretation Section (Moved Here) ---
                 st.markdown("#### 🔍 Interpreting Your Aggregated Results (Experimental)")
                 with st.expander("💡 Interpreting Your Aggregated Results (Experimental)", expanded=False):
                     st.markdown("""
                     This section offers a general interpretation of the aggregated scores. Remember that these are heuristic-based and should be combined with a qualitative review of individual responses for a complete understanding.
-                    Low scores don't always mean a "bad" model; they indicate areas where the model's output differs from the reference or desired behavior according to the specific metric.
+                    Low scores don't always mean a "bad" model; they indicate areas where the model's output differs from the reference or desired behavior according to the specific metric. NaN scores indicate the metric was not applicable (e.g. missing input) or could not be computed.
                     """)
                     if agg_df is not None and not agg_df.empty:
                         for task_type_interp in agg_df['task_type'].unique():
@@ -531,7 +676,6 @@ with tab_eval:
                                 interpretations = []
                                 suggestions = []
 
-                                # Fluency & Similarity (BLEU, ROUGE, METEOR)
                                 fluency_scores = {m: model_scores_interp.get(m) for m in ['bleu', 'rouge_l', 'meteor'] if m in model_scores_interp and pd.notna(model_scores_interp.get(m)) and not is_placeholder_metric(m)}
                                 if fluency_scores:
                                     valid_fluency_scores = [s for s in fluency_scores.values() if pd.notna(s)]
@@ -542,17 +686,21 @@ with tab_eval:
                                         else: interpretations.append(f"❌ Low fluency/similarity. Responses might be quite different from references or have linguistic issues (Avg. relevant score: {avg_fluency:.2f})."); suggestions.append("Review responses for clarity, grammar, and relevance. Consider prompt adjustments or fine-tuning on target-style data.")
                                 
                                 fact_presence = model_scores_interp.get('fact_presence_score')
-                                if pd.notna(fact_presence) and not is_placeholder_metric('fact_presence_score'):
+                                if pd.notna(fact_presence) and not is_placeholder_metric('fact_presence_score'): 
                                     if fact_presence > 0.7: interpretations.append(f"✅ Good inclusion of specified facts ({fact_presence:.2f}).")
                                     elif fact_presence > 0.4: interpretations.append(f"⚠️ Moderate inclusion of facts ({fact_presence:.2f}). Some key information might be missing.")
-                                    else: interpretations.append(f"❌ Low inclusion of specified facts ({fact_presence:.2f})."); suggestions.append("Ensure `ref_facts` are accurate and present in good answers. For RAG, check context relevance and model's ability to extract from it.")
-                                
+                                    else: interpretations.append(f"❌ Low inclusion of specified facts ({fact_presence:.2f})."); suggestions.append("Ensure `ref_facts` are accurate and present in good answers. Model might need better prompting to extract facts.")
+                                elif pd.isna(fact_presence) and 'fact_presence_score' in model_scores_interp and not is_placeholder_metric('fact_presence_score'):
+                                    interpretations.append(f"ℹ️ Fact Presence: Not applicable or not computed (score is NaN). This may be due to missing `ref_facts` in input data.")
+
                                 completeness = model_scores_interp.get('completeness_score')
                                 if pd.notna(completeness) and not is_placeholder_metric('completeness_score'):
                                     if completeness > 0.7: interpretations.append(f"✅ Good coverage of key points ({completeness:.2f}).")
                                     elif completeness > 0.4: interpretations.append(f"⚠️ Moderate coverage of key points ({completeness:.2f}). May not address all aspects.")
-                                    else: interpretations.append(f"❌ Low coverage of key points ({completeness:.2f})."); suggestions.append("Ensure `ref_key_points` are well-defined. Model might need prompting to be more comprehensive or context might be lacking.")
-                                
+                                    else: interpretations.append(f"❌ Low coverage of key points ({completeness:.2f})."); suggestions.append("Ensure `ref_key_points` are well-defined. Model might need prompting to be more comprehensive.")
+                                elif pd.isna(completeness) and 'completeness_score' in model_scores_interp and not is_placeholder_metric('completeness_score'):
+                                     interpretations.append(f"ℹ️ Checklist Completeness: Not applicable or not computed (score is NaN). This may be due to missing `ref_key_points` in input data.")
+
                                 f1 = model_scores_interp.get('f1_score'); acc = model_scores_interp.get('accuracy')
                                 if pd.notna(f1) and not is_placeholder_metric('f1_score'):
                                     if f1 > 0.75: interpretations.append(f"✅ Good classification performance (F1: {f1:.2f}).")
@@ -579,38 +727,38 @@ with tab_eval:
                                     if pii_score < 1.0: interpretations.append(f"🚨 Privacy alert! Basic PII pattern check failed for some responses (Score: {pii_score:.2f}). MANUAL REVIEW IS CRITICAL."); suggestions.append("Enhance PII detection and scrubbing. Review data handling policies and prompts.")
                                     else: interpretations.append("✅ Basic PII detection check passed.")
 
+
                                 if interpretations:
                                     st.markdown("**Observations:**")
                                     for o_item in interpretations: st.markdown(f"- {o_item}") 
                                 if suggestions:
-                                    st.markdown("**Potential Actions:**")
+                                    st.markdown("**Summary / Potential Actions:**")
                                     for s_item in suggestions: st.markdown(f"- {s_item}") 
                                 if not interpretations and not suggestions:
                                     st.markdown("_No specific interpretations generated based on available non-placeholder scores for this model/task combination._")
                                 st.markdown("---") 
                     else: st.info("Run an evaluation to see interpretations.")
                 st.markdown("---") 
-
                 st.markdown("#### 📊 Task Specific Metric Table & Chart 📈  ")
                 available_tasks_agg = sorted(agg_df['task_type'].unique()) if 'task_type' in agg_df else []
                 if not available_tasks_agg: st.info("No tasks found in aggregated results.")
                 else:
                     task_tabs_agg = st.tabs([f"Task: {task}" for task in available_tasks_agg])
-                    for i, task_type in enumerate(available_tasks_agg):
-                        with task_tabs_agg[i]:
-                            task_df_agg = agg_df[agg_df['task_type'] == task_type].copy()
+                    for i_task_tab, task_type_tab in enumerate(available_tasks_agg):
+                        with task_tabs_agg[i_task_tab]:
+                            task_df_agg = agg_df[agg_df['task_type'] == task_type_tab].copy()
                             task_specific_metrics_for_task_dim_view = [
-                                m for m in get_metrics_for_task(task_type) 
+                                m for m in get_metrics_for_task(task_type_tab) 
                                 if m in agg_df.columns and m in metrics_to_display_non_placeholder 
                             ]
                             if not task_specific_metrics_for_task_dim_view:
-                                st.info(f"No relevant, non-placeholder metrics to display for task '{task_type}'.")
+                                st.info(f"No relevant, non-placeholder metrics to display for task '{task_type_tab}'.")
                                 continue
 
                             relevant_categories_agg = sorted(list(set(METRIC_INFO[m]['category'] for m in task_specific_metrics_for_task_dim_view if m in METRIC_INFO)))
                             ordered_relevant_categories_agg = [cat for cat in CATEGORY_ORDER if cat in relevant_categories_agg]
 
-                            if not ordered_relevant_categories_agg: st.info(f"No metric categories for task '{task_type}'.")
+                            if not ordered_relevant_categories_agg: st.info(f"No metric categories for task '{task_type_tab}'.")
                             else:
                                 dimension_tabs_agg = st.tabs([f"{cat}" for cat in ordered_relevant_categories_agg])
                                 for j_dim, category in enumerate(ordered_relevant_categories_agg):
@@ -623,7 +771,7 @@ with tab_eval:
                                         cols_to_show_agg_dim = ['model', 'num_samples'] + metrics_in_category_task_agg
                                         cols_to_show_present_agg_dim = [c for c in cols_to_show_agg_dim if c in task_df_agg.columns]
                                         
-                                        st.markdown(f"###### {category} Metrics Table (Aggregated for Task: {task_type})")
+                                        st.markdown(f"###### {category} Metrics Table (Aggregated for Task: {task_type_tab})")
                                         filtered_df_dim_agg = task_df_agg[cols_to_show_present_agg_dim].copy()
                                         new_cat_columns_agg = {}
                                         for col_key_dim in filtered_df_dim_agg.columns:
@@ -641,14 +789,14 @@ with tab_eval:
                                             use_container_width=True
                                         )
 
-                                        st.markdown(f"###### {category} Charts (Aggregated for Task: {task_type})")
+                                        st.markdown(f"###### {category} Charts (Aggregated for Task: {task_type_tab})")
                                         plottable_metrics_agg = [m for m in metrics_in_category_task_agg if pd.api.types.is_numeric_dtype(task_df_agg[m])]
                                         if not plottable_metrics_agg: st.info("No numeric metrics for charting.")
                                         else:
                                             metric_display_options_agg = {f"{get_metric_display_name(m)} {get_metric_indicator(m)}".strip(): m for m in plottable_metrics_agg}
                                             selected_metric_display_agg = st.selectbox(
-                                                f"Metric for {task_type} - {category}:", list(metric_display_options_agg.keys()),
-                                                key=f"chart_sel_agg_{task_type}_{category.replace(' ','_')}_{j_dim}"
+                                                f"Metric for {task_type_tab} - {category}:", list(metric_display_options_agg.keys()),
+                                                key=f"chart_sel_agg_{task_type_tab}_{category.replace(' ','_')}_{i_task_tab}_{j_dim}" 
                                             )
                                             if selected_metric_display_agg:
                                                 selected_metric_chart_agg = metric_display_options_agg[selected_metric_display_agg]
@@ -668,11 +816,20 @@ with tab_eval:
                 csv_data_agg = agg_df.to_csv(index=False).encode('utf-8') 
                 md_content_agg = f"# LLM Evaluation Aggregated Report ({datetime.datetime.now():%Y-%m-%d %H:%M})\n\n"
                 agg_df_md_display_dl = agg_df.copy() 
-                agg_df_md_display_dl.rename(columns=renamed_cols_overall, inplace=True) 
-                md_content_agg += agg_df_md_display_dl[final_display_cols_overall].to_markdown(index=False, floatfmt=".4f")
+                if 'renamed_cols_overall' in locals() and renamed_cols_overall: 
+                    agg_df_md_display_dl.rename(columns=renamed_cols_overall, inplace=True) 
+                    if 'final_display_cols_overall' in locals() and final_display_cols_overall:
+                         display_cols_for_md = [renamed_cols_overall.get(col, col) for col in final_display_cols_overall if renamed_cols_overall.get(col, col) in agg_df_md_display_dl.columns]
+                    else: 
+                         display_cols_for_md = [col for col in agg_df_md_display_dl.columns if col not in ['task_type_idx']]
+                else: 
+                    display_cols_for_md = [col for col in agg_df_md_display_dl.columns if col not in ['task_type_idx']]
+
+                md_content_agg += agg_df_md_display_dl[display_cols_for_md].to_markdown(index=False, floatfmt=".4f")
                 md_content_agg += "\n\n---\n_End of Aggregated Summary_"
                 with col1_agg_dl: st.download_button("⬇️ CSV Aggregated Results", csv_data_agg, f"aggregated_eval_results_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv", "text/csv", key="dl_csv_agg")
                 with col2_agg_dl: st.download_button("⬇️ MD Aggregated Summary", md_content_agg.encode('utf-8'), f"aggregated_eval_summary_{datetime.datetime.now():%Y%m%d_%H%M%S}.md", "text/markdown", key="dl_md_agg")
+
         else: st.info("No aggregated results to display. Run an evaluation.")
 
     with res_tab_ind:
@@ -688,8 +845,8 @@ with tab_eval:
 
             id_cols = ['id', 'task_type', 'model', 'test_description']
             metric_cols_display_names = [renamed_cols_ind_display.get(m_key, m_key) for m_key in original_metric_keys_in_ind_df if renamed_cols_ind_display.get(m_key, m_key) in ind_df_display.columns]
-            interpretation_cols = ['Observations', 'Potential Actions'] 
-            input_output_cols = ['question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
+            interpretation_cols = ['Observations', 'Potential Actions', 'Metrics Not Computed or Not Applicable'] # Added new column
+            input_output_cols = ['question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
             
             final_order_ind_display = []
             for col in id_cols:
@@ -699,28 +856,26 @@ with tab_eval:
                 if col in ind_df_display.columns: final_order_ind_display.append(col)
             for col in input_output_cols:
                 if col in ind_df_display.columns: final_order_ind_display.append(col)
+            
             remaining_other_cols_ind = sorted([col for col in ind_df_display.columns if col not in final_order_ind_display and not col.startswith('_st_')])
             final_order_ind_display.extend(remaining_other_cols_ind)
-            final_order_ind_display = [col for col in final_order_ind_display if col in ind_df_display.columns]
+            final_order_ind_display = [col for col in final_order_ind_display if col in ind_df_display.columns] 
 
             st.info("Displaying all scores and interpretations for each test case. Use column headers to sort. Download full table below.")
             st.dataframe(ind_df_display[final_order_ind_display].style.pipe(apply_color_gradient, METRIC_INFO), use_container_width=True)
             
-            # --- New: Interpretation for Selected Individual Test Case ---
             st.divider()
             st.subheader("🔍 Detailed Interpretation for a Single Test Case")
             if 'id' in st.session_state.individual_scores_df.columns:
-                # Ensure 'id' column is string for consistent matching with selectbox options
                 available_ids = st.session_state.individual_scores_df['id'].astype(str).unique().tolist()
                 if not available_ids:
                     st.warning("No test case IDs found in the individual results.")
                 else:
-                    # Add a "None" option to allow deselecting or showing no interpretation initially
                     options_for_selectbox = ["<Select a Test Case ID>"] + available_ids
                     selected_id_for_interp = st.selectbox(
                         "Select Test Case ID to see detailed interpretation:",
                         options=options_for_selectbox,
-                        index=0, # Default to "<Select...>"
+                        index=0, 
                         key="individual_case_interp_selector"
                     )
 
@@ -736,6 +891,7 @@ with tab_eval:
                             if pd.notna(case_to_show.get('test_description')):
                                 st.markdown(f"**Description:** {case_to_show.get('test_description')}")
 
+                            st.markdown("---")
                             st.markdown("**Observations:**")
                             if pd.notna(case_to_show.get('Observations')) and case_to_show.get('Observations').strip():
                                 st.markdown(case_to_show.get('Observations'))
@@ -748,28 +904,29 @@ with tab_eval:
                             else:
                                 st.markdown("_No specific automated suggestions for this case. Review manually if scores were low._")
                             
-                            # Optionally, show the Q, A, GT for context
+                            st.markdown("**Metrics Not Computed or Not Applicable:**")
+                            if pd.notna(case_to_show.get('Metrics Not Computed or Not Applicable')) and case_to_show.get('Metrics Not Computed or Not Applicable').strip():
+                                st.markdown(case_to_show.get('Metrics Not Computed or Not Applicable'))
+                            else:
+                                st.markdown("_All relevant metrics were computed._")
+                            st.markdown("---")
+
                             with st.expander("View Question, Ground Truth, and Answer for this case"):
                                 st.markdown(f"**Question:**\n```\n{case_to_show.get('question', '')}\n```")
                                 st.markdown(f"**Ground Truth:**\n```\n{case_to_show.get('ground_truth', '')}\n```")
                                 st.markdown(f"**LLM Answer:**\n```\n{case_to_show.get('answer', '')}\n```")
-                                if pd.notna(case_to_show.get('contexts')):
-                                     st.markdown(f"**Contexts:**\n```\n{case_to_show.get('contexts', '')}\n```")
-
-
                         else:
                             st.warning(f"Could not find data for selected ID: {selected_id_for_interp}")
             else:
                 st.info("Run evaluation to generate individual scores with IDs for detailed interpretation.")
-
 
             st.divider(); st.subheader("Download Individual Scores Report (with Interpretations)")
             csv_download_df_ind = st.session_state.individual_scores_df.copy() 
             
             csv_id_cols = ['id', 'task_type', 'model', 'test_description']
             csv_metric_cols = [m_key for m_key in METRIC_INFO.keys() if m_key in csv_download_df_ind.columns] 
-            csv_interp_cols = ['Observations', 'Potential Actions']
-            csv_input_output_cols = ['question', 'contexts', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
+            csv_interp_cols = ['Observations', 'Potential Actions', 'Metrics Not Computed or Not Applicable'] # Added new column
+            csv_input_output_cols = ['question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
 
             csv_final_order = []
             for col_group in [csv_id_cols, csv_metric_cols, csv_interp_cols, csv_input_output_cols]:
@@ -782,69 +939,153 @@ with tab_eval:
 
             csv_data_ind = csv_download_df_ind[csv_final_order].to_csv(index=False, float_format="%.4f").encode('utf-8')
             st.download_button("⬇️ CSV Individual Scores & Interpretations", csv_data_ind, f"individual_eval_scores_interpreted_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv", "text/csv", key="dl_csv_ind_interpreted")
+
         else: st.info("No individual scores to display. Run an evaluation.")
 
 with tab_data_editor:
     st.header("Manage Evaluation Data")
     st.markdown("Manually add new evaluation rows or edit existing data. Data loaded/generated via sidebar appears here.")
     st.subheader("Add New Evaluation Row")
+    
+    # Radio button for input mode - placed OUTSIDE the form for immediate UI updates
+    # It updates a session state variable that the form then reads.
+    def update_input_mode():
+        st.session_state.add_row_input_mode = st.session_state.add_row_input_mode_selector_outside_form_key
+    
+    st.radio(
+        "Input Mode:", 
+        ("Easy (Required Fields Only)", "Custom (Select Additional Fields)"), 
+        key="add_row_input_mode_selector_outside_form_key", # Unique key for this radio
+        horizontal=True,
+        index=("Easy (Required Fields Only)", "Custom (Select Additional Fields)").index(st.session_state.add_row_input_mode),
+        on_change=update_input_mode # Callback to update the main session state variable
+    )
+
     with st.form("add_case_form", clear_on_submit=True):
         col_form_id, col_form_task, col_form_model = st.columns(3)
-        with col_form_id: add_id = st.text_input("Test Case ID (Optional)", key="add_id_input", placeholder="e.g., rag_case_001")
-        with col_form_task: add_task_type = st.selectbox("Task Type*", list(get_supported_tasks()), key="add_task_type_select", index=None, placeholder="Select Task...")
-        with col_form_model: add_model = st.text_input("LLM/Model Config*", key="add_model_input", placeholder="e.g., MyModel_v1.2_temp0.7")
-        add_description = st.text_input("Test Description (Optional)", key="add_description_input", placeholder="Briefly describe this test case's purpose...")
-        add_question = st.text_area("Question / Input Text*", key="add_question_input", placeholder="Input query, text to summarize/classify, or chatbot utterance.", height=100)
-        add_ground_truth = st.text_area("Ground Truth / Reference*", key="add_ground_truth_input", placeholder="Ideal answer, reference summary, correct label, or reference response.", height=100)
-        add_answer = st.text_area("LLM's Actual Answer / Prediction*", key="add_answer_input", placeholder="Actual output generated by the LLM.", height=100)
-        col_form_context, col_form_facts, col_form_kps = st.columns(3)
-        with col_form_context: add_contexts = st.text_area("Contexts (Optional)", key="add_contexts_input", placeholder="For RAG, retrieved context.", height=75)
-        with col_form_facts: add_ref_facts = st.text_input("Reference Facts (Optional, comma-separated)", key="add_ref_facts_input", placeholder="fact A,fact B")
-        with col_form_kps: add_ref_key_points = st.text_input("Reference Key Points (Optional, comma-separated)", key="add_ref_key_points_input", placeholder="point 1,point 2")
+        with col_form_id: add_id_val = st.text_input("Test Case ID (Optional)", key="add_id_input_widget_in_form", placeholder="e.g., rag_case_001")
+        with col_form_task: add_task_type_val = st.selectbox("Task Type*", list(get_supported_tasks()), key="add_task_type_select_widget_in_form", index=None, placeholder="Select Task...")
+        with col_form_model: add_model_val = st.text_input("LLM/Model Config*", key="add_model_input_widget_in_form", placeholder="e.g., MyModel_v1.2_temp0.7")
+        
+        add_question_val = st.text_area("Question / Input Text*", key="add_question_input_widget_in_form", placeholder="Input query, text to summarize/classify, or chatbot utterance.", height=100)
+        add_ground_truth_val = st.text_area("Ground Truth / Reference*", key="add_ground_truth_input_widget_in_form", placeholder="Ideal answer, reference summary, correct label, or reference response.", height=100)
+        add_answer_val = st.text_area("LLM's Actual Answer / Prediction*", key="add_answer_input_widget_in_form", placeholder="Actual output generated by the LLM.", height=100)
+
+        form_add_test_description = None
+        form_add_ref_facts = None
+        form_add_ref_key_points = None
+
+        # Conditional display of custom fields based on st.session_state.add_row_input_mode
+        if st.session_state.add_row_input_mode == "Custom (Select Additional Fields)":
+            st.markdown("---")
+            st.markdown("**Custom Fields (Optional):**")
+            
+            form_add_test_description = st.text_input(
+                OPTIONAL_FIELDS_ADD_ROW_INFO["test_description"]["label"], 
+                key="add_description_input_custom_widget_in_form", 
+                placeholder=OPTIONAL_FIELDS_ADD_ROW_INFO["test_description"]["placeholder"]
+            )
+            st.caption(OPTIONAL_FIELDS_ADD_ROW_INFO["test_description"]["metric_info"])
+
+            # Reference Facts and Key Points are now always visible in Custom mode
+            # User can leave blank if not needed.
+            form_add_ref_facts = st.text_input(
+                f"{OPTIONAL_FIELDS_ADD_ROW_INFO['ref_facts']['label']} ({OPTIONAL_FIELDS_ADD_ROW_INFO['ref_facts']['metric_info']})", 
+                key="add_ref_facts_input_custom_widget_in_form", 
+                placeholder=OPTIONAL_FIELDS_ADD_ROW_INFO["ref_facts"]["placeholder"]
+            )
+            
+            form_add_ref_key_points = st.text_input(
+                f"{OPTIONAL_FIELDS_ADD_ROW_INFO['ref_key_points']['label']} ({OPTIONAL_FIELDS_ADD_ROW_INFO['ref_key_points']['metric_info']})", 
+                key="add_ref_key_points_input_custom_widget_in_form", 
+                placeholder=OPTIONAL_FIELDS_ADD_ROW_INFO["ref_key_points"]["placeholder"]
+            )
+        else: # Easy Mode
+            form_add_test_description = st.text_input(
+                OPTIONAL_FIELDS_ADD_ROW_INFO["test_description"]["label"], 
+                key="add_description_input_easy_widget_in_form", 
+                placeholder=OPTIONAL_FIELDS_ADD_ROW_INFO["test_description"]["placeholder"]
+            )
+            st.caption(OPTIONAL_FIELDS_ADD_ROW_INFO["test_description"]["metric_info"])
+
         submitted_add_row = st.form_submit_button("➕ Add Evaluation Row to Editor")
+        
         if submitted_add_row:
-            if not all([st.session_state.add_task_type_select, st.session_state.add_model_input, st.session_state.add_question_input, st.session_state.add_ground_truth_input, st.session_state.add_answer_input]):
-                st.error("Required fields (*) missing.")
+            missing_fields = []
+            if not add_task_type_val: missing_fields.append("Task Type")
+            if not add_model_val.strip(): missing_fields.append("LLM/Model Config")
+            if not add_question_val.strip(): missing_fields.append("Question / Input Text")
+            if not add_ground_truth_val.strip(): missing_fields.append("Ground Truth / Reference")
+            if not add_answer_val.strip(): missing_fields.append("LLM's Actual Answer")
+
+            if missing_fields:
+                st.error(f"Required fields (*) missing: {', '.join(missing_fields)}.")
             else:
                 current_df = st.session_state.edited_test_cases_df
-                if add_id and not current_df.empty and 'id' in current_df.columns and add_id in current_df['id'].astype(str).values:
-                    st.error(f"ID '{add_id}' exists. Use unique ID or leave blank.")
+                final_add_id = add_id_val.strip() if add_id_val and add_id_val.strip() else f"manual_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}"
+
+                if not current_df.empty and 'id' in current_df.columns and final_add_id in current_df['id'].astype(str).values:
+                    st.error(f"ID '{final_add_id}' already exists. Please use a unique ID or leave blank for auto-generation.")
                 else:
-                    new_row_dict = {'id': add_id if add_id else f"manual_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S%f')}",
-                                   'task_type': st.session_state.add_task_type_select, 'model': st.session_state.add_model_input,
-                                   'test_description': st.session_state.add_description_input or None, 'question': st.session_state.add_question_input,
-                                   'contexts': st.session_state.add_contexts_input or None, 'ground_truth': st.session_state.add_ground_truth_input,
-                                   'answer': st.session_state.add_answer_input, 'ref_facts': st.session_state.add_ref_facts_input or None,
-                                   'ref_key_points': st.session_state.add_ref_key_points_input or None}
+                    new_row_dict = {
+                        'id': final_add_id, 'task_type': add_task_type_val, 
+                        'model': add_model_val.strip(), 'question': add_question_val.strip(),
+                        'ground_truth': add_ground_truth_val.strip(), 'answer': add_answer_val.strip(),
+                        'test_description': form_add_test_description.strip() if form_add_test_description else None,
+                        'ref_facts': form_add_ref_facts.strip() if form_add_ref_facts else None,
+                        'ref_key_points': form_add_ref_key_points.strip() if form_add_ref_key_points else None,
+                    }
                     new_row_df = pd.DataFrame([new_row_dict])
-                    if st.session_state.edited_test_cases_df.empty: st.session_state.edited_test_cases_df = new_row_df.fillna('')
+                    if st.session_state.edited_test_cases_df.empty: 
+                        st.session_state.edited_test_cases_df = new_row_df.fillna('')
                     else:
                         for col in new_row_df.columns: 
-                            if col not in st.session_state.edited_test_cases_df.columns: st.session_state.edited_test_cases_df[col] = np.nan
+                            if col not in st.session_state.edited_test_cases_df.columns: 
+                                st.session_state.edited_test_cases_df[col] = np.nan
                         for col in st.session_state.edited_test_cases_df.columns: 
-                             if col not in new_row_df.columns: new_row_df[col] = np.nan
-                        st.session_state.edited_test_cases_df = pd.concat([st.session_state.edited_test_cases_df, new_row_df], ignore_index=True).fillna('')
-                    st.success(f"Row '{new_row_dict['id']}' added."); st.rerun() 
-
+                             if col not in new_row_df.columns: 
+                                new_row_df[col] = np.nan
+                        st.session_state.edited_test_cases_df = pd.concat(
+                            [st.session_state.edited_test_cases_df, new_row_df], ignore_index=True
+                        ).fillna('')
+                    st.success(f"Row '{new_row_dict['id']}' added to editor.")
+                    # st.rerun() # This will happen automatically because clear_on_submit=True for the form
+    
     st.divider(); st.subheader("Data Editor")
     if isinstance(st.session_state.edited_test_cases_df, pd.DataFrame) and not st.session_state.edited_test_cases_df.empty:
         st.markdown("Edit data below. Changes are used when 'Run Evaluation' is clicked. Add/delete rows as needed.")
-        editor_col_order = ['id', 'task_type', 'model', 'test_description', 'question', 'ground_truth', 'answer', 'contexts', 'ref_facts', 'ref_key_points']
+        editor_col_order = ['id', 'task_type', 'model', 'test_description', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
+        
+        current_cols_in_df = st.session_state.edited_test_cases_df.columns.tolist()
+        for col in editor_col_order:
+            if col not in current_cols_in_df:
+                st.session_state.edited_test_cases_df[col] = '' 
+        
         available_cols_for_editor = [col for col in editor_col_order if col in st.session_state.edited_test_cases_df.columns]
         remaining_cols_for_editor = sorted([col for col in st.session_state.edited_test_cases_df.columns if col not in available_cols_for_editor])
         final_editor_cols = available_cols_for_editor + remaining_cols_for_editor
-        edited_df_from_editor = st.data_editor(st.session_state.edited_test_cases_df[final_editor_cols].fillna(''),
-                                               num_rows="dynamic", use_container_width=True, key="data_editor_main")
-        st.session_state.edited_test_cases_df = edited_df_from_editor.copy()
+        
+        df_for_editor_display = st.session_state.edited_test_cases_df.copy()
+        for col in final_editor_cols: 
+            if col not in df_for_editor_display.columns:
+                df_for_editor_display[col] = ''
+
+        edited_df_from_editor = st.data_editor(
+            df_for_editor_display[final_editor_cols].fillna(''), 
+            num_rows="dynamic", use_container_width=True, key="data_editor_main"
+        )
+        st.session_state.edited_test_cases_df = edited_df_from_editor.copy() 
+        
         if not st.session_state.edited_test_cases_df.empty:
              csv_edited_data = st.session_state.edited_test_cases_df.fillna('').to_csv(index=False).encode('utf-8')
              st.download_button("⬇️ Download Edited Data (CSV)", csv_edited_data, f"edited_eval_cases_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv", "text/csv", key="dl_edited_data_csv")
     else: st.info("No data loaded. Use sidebar to load/generate or add rows using the form.")
 
+
 with tab_format_guide:
     st.header("Input Data Format Guide (Flat Format)")
     st.markdown("""The framework expects input data (JSON, CSV, or Excel) in a **flat format**. Each row represents a single evaluation instance.""")
-    guide_order = ['id', 'task_type', 'model', 'test_description', 'question', 'ground_truth', 'answer', 'contexts', 'ref_facts', 'ref_key_points']
+    guide_order = ['id', 'task_type', 'model', 'test_description', 'question', 'ground_truth', 'answer', 'ref_facts', 'ref_key_points']
     data_format_info = {
         "id": "**(Optional but Recommended)** Unique identifier for the row.",
         "task_type": "**(Required)** Task type (e.g., `rag_faq`, `summarization`).",
@@ -853,19 +1094,19 @@ with tab_format_guide:
         "question": "**(Required)** Input text/query for the LLM.",
         "ground_truth": "**(Required)** Reference answer, label, or summary.",
         "answer": "**(Required)** Actual output from the LLM.",
-        "contexts": "**(Optional)** Context provided to LLM for RAG tasks.",
-        "ref_facts": "**(Optional)** Comma-separated factual statements for `FactPresenceMetric`.",
-        "ref_key_points": "**(Optional)** Comma-separated key points for `ChecklistCompletenessMetric`."}
+        "ref_facts": "**(Optional)** Comma-separated factual statements for `FactPresenceMetric` (e.g., `fact A,fact B`). Score will be NaN if not provided.",
+        "ref_key_points": "**(Optional)** Comma-separated key points for `ChecklistCompletenessMetric` (e.g., `point 1,point 2`). Score will be NaN if not provided."}
     for col in guide_order:
         if col in data_format_info: st.markdown(f"- **`{col}`**: {data_format_info[col]}")
+    
     st.subheader("Example Rows (Conceptual CSV/Excel Structure):")
-    example_data = [{'id': 'rag_001', 'task_type': 'rag_faq', 'model': 'ModelAlpha', 'test_description': 'Capital of France', 'question': 'What is the capital of France?', 'contexts': 'Paris is the capital...', 'ground_truth': 'Paris is the capital.', 'answer': 'The capital is Paris.', 'ref_facts': 'Paris is capital', 'ref_key_points': 'Capital City'},
-                    {'id': 'sum_001', 'task_type': 'summarization', 'model': 'ModelBeta', 'test_description': 'AI Summary', 'question': 'Summarize AI history.', 'contexts': '', 'ground_truth': 'AI evolved...', 'answer': 'AI started old, now ML.', 'ref_facts': '', 'ref_key_points': 'Evolution,ML'}]
+    example_data = [{'id': 'rag_001', 'task_type': 'rag_faq', 'model': 'ModelAlpha', 'test_description': 'Capital of France', 'question': 'What is the capital of France?', 'ground_truth': 'Paris is the capital.', 'answer': 'The capital is Paris.', 'ref_facts': 'Paris is capital', 'ref_key_points': 'Capital City'},
+                    {'id': 'sum_001', 'task_type': 'summarization', 'model': 'ModelBeta', 'test_description': 'AI Summary', 'question': 'Summarize AI history.', 'ground_truth': 'AI evolved...', 'answer': 'AI started old, now ML.', 'ref_facts': '', 'ref_key_points': 'Evolution,ML'}]
     st.dataframe(pd.DataFrame(example_data).fillna(''))
 
 with tab_metrics_tutorial:
     st.header("Metrics Tutorial & Explanations")
-    st.markdown("Understand the metrics used. Metrics are grouped by evaluation dimension.")
+    st.markdown("Understand the metrics used. Metrics are grouped by evaluation dimension. Metrics requiring specific optional inputs (like `ref_facts`) will result in a `NaN` score if those inputs are not provided in your data.")
     for category in CATEGORY_ORDER:
         with st.expander(f"Dimension: **{category}**", expanded=(category == CAT_TRUST)):
             st.markdown(f"*{DIMENSION_DESCRIPTIONS.get(category, '')}*"); st.markdown("---")
@@ -876,10 +1117,14 @@ with tab_metrics_tutorial:
                     info = METRIC_INFO.get(metric_key)
                     if info:
                         indicator = get_metric_indicator(metric_key)
-                        # Use get_metric_display_name to include (Placeholder) tag
                         st.markdown(f"##### {get_metric_display_name(metric_key)} (`{metric_key}`) {indicator}")
                         st.markdown(f"**Use Case & Interpretation:** {info['explanation']}")
                         relevant_tasks = [task_name for task_name in get_supported_tasks() if metric_key in get_metrics_for_task(task_name)]
                         if relevant_tasks: st.markdown(f"**Commonly Used For Tasks:** `{'`, `'.join(relevant_tasks)}`")
                         else: st.markdown("**Commonly Used For Tasks:** (Specialized or placeholder).")
+                        
+                        input_field_data_key = info.get("input_field_data_key")
+                        if input_field_data_key:
+                            st.markdown(f"**Relies on Input Data Field:** `{input_field_data_key}` (Score will be NaN if this field is empty/missing in a data row).")
+                        
                         st.markdown("---")
