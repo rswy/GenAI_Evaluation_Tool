@@ -6,11 +6,10 @@ import plotly.express as px
 from collections import defaultdict
 import datetime
 
-# Assuming these are imported from app_config and ui_helpers in the main app and passed as arguments
-# For this example, direct imports for simplicity if they are in the path
+# Corrected imports: Assuming 'src' is on sys.path
 from app_config import METRIC_INFO, KEY_METRICS_PER_TASK_FOR_HIGHLIGHTS, CATEGORY_ORDER
 from ui_helpers import get_metric_display_name, get_metric_indicator, is_placeholder_metric, apply_color_gradient
-from tasks.task_registry import get_metrics_for_task # For task-specific metric lists
+from tasks.task_registry import get_metrics_for_task
 
 def render_individual_scores_sub_tab():
     """Renders the 'Individual Scores' sub-tab within 'Evaluation & Results'."""
@@ -95,19 +94,18 @@ def render_individual_scores_sub_tab():
 
 def render_aggregated_results_sub_tab(interpretation_engine): # Pass the engine
     """Renders the 'Aggregated Results' sub-tab within 'Evaluation & Results'."""
-    st.markdown("Aggregated view transforms individual data points into insights about the LLM's overall behavior...") # Shortened
+    st.markdown("Aggregated view transforms individual data points into insights about the LLM's overall behavior...") 
     if st.session_state.aggregated_results_df is not None and not st.session_state.aggregated_results_df.empty:
         agg_df = st.session_state.aggregated_results_df
         metrics_to_display_non_placeholder = st.session_state.metrics_for_agg_display
         if not metrics_to_display_non_placeholder:
-            st.info("No non-placeholder metrics with valid scores to display in aggregated summary...") # Shortened
+            st.info("No non-placeholder metrics with valid scores to display in aggregated summary...") 
             simple_formatter = {col: "{:.4f}" for col in agg_df.select_dtypes(include=np.number).columns}
             st.dataframe(agg_df.style.format(formatter=simple_formatter, na_rep='NaN'), use_container_width=True)
         else:
             st.markdown("#### 🏆 Best Model Summary (Highlights)")
-            st.caption("Top models per task based on key, non-placeholder metrics...") # Shortened
+            st.caption("Top models per task based on key, non-placeholder metrics...") 
             
-            # Use KEY_METRICS_PER_TASK_FOR_HIGHLIGHTS from app_config
             key_metrics_per_task = {
                 task: [m for m in metrics if not is_placeholder_metric(m)] 
                 for task, metrics in KEY_METRICS_PER_TASK_FOR_HIGHLIGHTS.items()
@@ -117,7 +115,6 @@ def render_aggregated_results_sub_tab(interpretation_engine): # Pass the engine
             else:
                 for task_type_bm in available_tasks_for_best_model:
                     with st.expander(f"**Task: {task_type_bm}**", expanded=False):
-                        # ... (Best model summary logic - largely unchanged but uses imported configs/helpers)
                         task_df_bm = agg_df[agg_df['task_type'] == task_type_bm].copy()
                         best_performers_details = []
                         current_task_key_metrics = [
@@ -152,7 +149,6 @@ def render_aggregated_results_sub_tab(interpretation_engine): # Pass the engine
                                 st.markdown("---") 
                 st.markdown("---") 
             st.markdown("#### 📊 Overall Summary Table (Aggregated by Task & Model)")
-            # ... (Overall summary table logic - largely unchanged)
             agg_df_display_overall = agg_df.copy()
             renamed_cols_overall = {}
             final_display_cols_overall = []
@@ -185,7 +181,7 @@ def render_aggregated_results_sub_tab(interpretation_engine): # Pass the engine
 
             st.markdown("#### 🔍 Interpreting Your Aggregated Results (Experimental)")
             with st.expander("💡 Interpreting Your Aggregated Results (Experimental)", expanded=False):
-                st.markdown("This section offers a general interpretation of aggregated scores for non-placeholder metrics...") # Shortened
+                st.markdown("This section offers a general interpretation of aggregated scores for non-placeholder metrics...") 
                 if agg_df is not None and not agg_df.empty:
                     for task_type_interp_agg in agg_df['task_type'].unique():
                         st.markdown(f"#### Task: {task_type_interp_agg}")
@@ -194,23 +190,29 @@ def render_aggregated_results_sub_tab(interpretation_engine): # Pass the engine
                             model_scores_interp_agg = task_data_interp_agg[task_data_interp_agg['model'] == model_name_interp_agg].iloc[0]
                             st.markdown(f"**Model: `{model_name_interp_agg}`**")
                             
-                            # Use the interpretation_engine function
-                            interpretations_agg, suggestions_agg = interpretation_engine.generate_aggregated_interpretations(model_scores_interp_agg, task_type_interp_agg)
+                            # Correctly unpack three values
+                            interpretations_agg, suggestions_agg, not_applicable_agg_text = interpretation_engine.generate_aggregated_interpretations(model_scores_interp_agg, task_type_interp_agg)
 
-                            if interpretations_agg:
+                            if interpretations_agg and interpretations_agg.strip() and interpretations_agg != "No specific aggregated observations based on current thresholds.":
                                 st.markdown("**Observations:**")
-                                for o_item in interpretations_agg: st.markdown(f"- {o_item}")
-                            if suggestions_agg:
+                                st.markdown(interpretations_agg) # Already formatted with newlines
+                            if suggestions_agg and suggestions_agg.strip() and suggestions_agg != "No specific aggregated suggestions.":
                                 st.markdown("**Summary / Potential Actions:**")
-                                for s_item in suggestions_agg: st.markdown(f"- {s_item}")
-                            if not interpretations_agg and not suggestions_agg:
-                                st.markdown("_No specific interpretations generated for this model/task combination._")
+                                st.markdown(suggestions_agg) # Already formatted with newlines
+                            
+                            # Optionally display not_applicable_agg_text if it contains meaningful info
+                            if not_applicable_agg_text and not_applicable_agg_text.strip() and not_applicable_agg_text != "All relevant aggregated metrics computed or no specific non-applicability notes.":
+                                st.markdown("**Notes on Aggregated Metrics:**")
+                                st.markdown(not_applicable_agg_text)
+
+                            if (not interpretations_agg or interpretations_agg == "No specific aggregated observations based on current thresholds.") and \
+                               (not suggestions_agg or suggestions_agg == "No specific aggregated suggestions."):
+                                st.markdown("_No specific interpretations or suggestions generated for this model/task combination based on available aggregated scores._")
                             st.markdown("---")
                 else: st.info("Run an evaluation to see interpretations.")
             st.markdown("---")
 
             st.markdown("#### 📊 Task Specific Metric Table & Chart 📈  ")
-            # ... (Task specific table & chart logic - largely unchanged but uses imported configs/helpers)
             available_tasks_agg = sorted(agg_df['task_type'].unique()) if 'task_type' in agg_df else []
             if not available_tasks_agg: st.info("No tasks found in aggregated results.")
             else:
@@ -267,33 +269,62 @@ def render_aggregated_results_sub_tab(interpretation_engine): # Pass the engine
                                         except Exception as e_chart: st.error(f"Chart error for {selected_metric_display_agg}: {e_chart}")
             st.divider()
             st.subheader("Download Aggregated Reports")
-            # ... (Download logic - largely unchanged)
             if agg_df is not None and not agg_df.empty:
                 col1_agg_dl, col2_agg_dl = st.columns(2)
                 csv_data_agg = agg_df.to_csv(index=False, float_format="%.4f").encode('utf-8') 
                 md_content_agg = f"# LLM Evaluation Aggregated Report ({datetime.datetime.now():%Y-%m-%d %H:%M})\n\n"
-                agg_df_md_display_dl = agg_df.copy() 
-                renamed_cols_md_dl = {}
-                static_cols_display_dl = ['task_type', 'model', 'num_samples'] # Define it here for scope
-                for col_md in agg_df_md_display_dl.columns:
-                    if col_md in METRIC_INFO:
-                        renamed_cols_md_dl[col_md] = get_metric_display_name(col_md, include_placeholder_tag=True) + \
-                                                     (f" {get_metric_indicator(col_md)}" if not is_placeholder_metric(col_md) else "")
-                    elif col_md in static_cols_display_dl:
-                         renamed_cols_md_dl[col_md] = col_md.replace('_', ' ').title()
-                agg_df_md_display_dl.rename(columns=renamed_cols_md_dl, inplace=True)
-                display_cols_for_md = [renamed_cols_md_dl.get(sc, sc) for sc in static_cols_display_dl if renamed_cols_md_dl.get(sc,sc) in agg_df_md_display_dl.columns]
-                sorted_metric_keys_for_md = sorted(
-                    [m for m in agg_df.columns if m in METRIC_INFO],
-                    key=lambda m: (is_placeholder_metric(m), METRIC_INFO[m]['category'], METRIC_INFO[m]['name'])
+                agg_df_md_display_dl = agg_df.copy() # Use the original agg_df for markdown content generation
+                
+                # For Markdown table (numerical part)
+                md_content_agg += "## Overall Performance Summary (Aggregated Numerical Scores)\n\n"
+                agg_df_md_numeric_part = agg_df.drop(columns=['Aggregated Observations', 'Aggregated Potential Actions', 'Aggregated Metrics Not Computed'], errors='ignore')
+                
+                renamed_cols_md_numeric_dl = {}
+                display_cols_for_md_numeric_table = []
+                static_cols_display_dl_numeric = ['task_type', 'model', 'num_samples'] 
+
+                for col_md_static_num in static_cols_display_dl_numeric:
+                    if col_md_static_num in agg_df_md_numeric_part.columns:
+                        renamed_name_num = col_md_static_num.replace('_', ' ').title()
+                        renamed_cols_md_numeric_dl[col_md_static_num] = renamed_name_num
+                        display_cols_for_md_numeric_table.append(renamed_name_num)
+                
+                sorted_metric_keys_for_md_numeric = sorted(
+                    [m for m in agg_df_md_numeric_part.columns if m in METRIC_INFO],
+                    key=lambda m_key: (is_placeholder_metric(m_key), METRIC_INFO[m_key]['category'], METRIC_INFO[m_key]['name'])
                 )
-                for m_key_md in sorted_metric_keys_for_md:
-                    renamed_m_key_md = renamed_cols_md_dl.get(m_key_md)
-                    if renamed_m_key_md and renamed_m_key_md in agg_df_md_display_dl.columns:
-                        display_cols_for_md.append(renamed_m_key_md)
-                md_content_agg += agg_df_md_display_dl[display_cols_for_md].to_markdown(index=False, floatfmt=".4f")
-                md_content_agg += "\n\n---\n_End of Aggregated Summary_"
-                with col1_agg_dl: st.download_button("⬇️ CSV Aggregated Results", csv_data_agg, f"aggregated_eval_results_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv", "text/csv", key="dl_csv_agg_results_tab")
-                with col2_agg_dl: st.download_button("⬇️ MD Aggregated Summary", md_content_agg.encode('utf-8'), f"aggregated_eval_summary_{datetime.datetime.now():%Y%m%d_%H%M%S}.md", "text/markdown", key="dl_md_agg_results_tab")
+                for m_key_md_num in sorted_metric_keys_for_md_numeric:
+                    renamed_m_key_md_num = get_metric_display_name(m_key_md_num, include_placeholder_tag=True) + \
+                                           (f" {get_metric_indicator(m_key_md_num)}" if not is_placeholder_metric(m_key_md_num) else "")
+                    renamed_cols_md_numeric_dl[m_key_md_num] = renamed_m_key_md_num.strip()
+                    if renamed_m_key_md_num.strip() not in display_cols_for_md_numeric_table : # Check if already added
+                         display_cols_for_md_numeric_table.append(renamed_m_key_md_num.strip())
+
+
+                agg_df_md_numeric_part.rename(columns=renamed_cols_md_numeric_dl, inplace=True)
+                display_cols_for_md_numeric_table = [col for col in display_cols_for_md_numeric_table if col in agg_df_md_numeric_part.columns] # Ensure columns exist
+                md_content_agg += agg_df_md_numeric_part[display_cols_for_md_numeric_table].to_markdown(index=False, floatfmt=".4f")
+                md_content_agg += "\n\n"
+
+                # Add separate section for aggregated textual interpretations in Markdown
+                if any(col in agg_df.columns for col in ['Aggregated Observations', 'Aggregated Potential Actions', 'Aggregated Metrics Not Computed']):
+                    md_content_agg += "## Aggregated Interpretations per Task/Model\n\n"
+                    for index, agg_row_md_interp in agg_df.iterrows():
+                        md_content_agg += f"### Task: `{agg_row_md_interp.get('task_type', 'N/A')}`, Model: `{agg_row_md_interp.get('model', 'N/A')}`\n\n"
+                        if 'Aggregated Observations' in agg_row_md_interp and pd.notna(agg_row_md_interp['Aggregated Observations']):
+                            md_content_agg += "**Observations (Aggregated):**\n"
+                            md_content_agg += f"{agg_row_md_interp['Aggregated Observations']}\n\n"
+                        if 'Aggregated Potential Actions' in agg_row_md_interp and pd.notna(agg_row_md_interp['Aggregated Potential Actions']):
+                            md_content_agg += "**Potential Actions (Aggregated):**\n"
+                            md_content_agg += f"{agg_row_md_interp['Aggregated Potential Actions']}\n\n"
+                        if 'Aggregated Metrics Not Computed' in agg_row_md_interp and pd.notna(agg_row_md_interp['Aggregated Metrics Not Computed']):
+                            md_content_agg += "**Metrics Not Computed/Applicable (Aggregated):**\n"
+                            md_content_agg += f"{agg_row_md_interp['Aggregated Metrics Not Computed']}\n\n"
+                        md_content_agg += "---\n\n"
+
+                md_content_agg += "_End of Aggregated Summary_"
+                
+                with col1_agg_dl: st.download_button("⬇️ CSV Aggregated Results (with Interpretations)", csv_data_agg, f"aggregated_eval_results_interpreted_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv", "text/csv", key="dl_csv_agg_results_tab_interp")
+                with col2_agg_dl: st.download_button("⬇️ MD Aggregated Summary (with Interpretations)", md_content_agg.encode('utf-8'), f"aggregated_eval_summary_interpreted_{datetime.datetime.now():%Y%m%d_%H%M%S}.md", "text/markdown", key="dl_md_agg_results_tab_interp")
     else: st.info("No aggregated results to display. Run an evaluation.")
 

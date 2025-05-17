@@ -7,18 +7,15 @@ import numpy as np
 import pandas as pd
 
 # Import config and helpers
-from .app_config import METRIC_INFO, SEMANTIC_SIMILARITY_SCORE, CLASSIFICATION # Assuming CLASSIFICATION constant is defined in app_config
+from .app_config import METRIC_INFO, SEMANTIC_SIMILARITY_SCORE, CLASSIFICATION
 from .ui_helpers import get_metric_display_name, is_placeholder_metric
 
 def generate_single_case_interpretation(case_row, task_type):
     """
     Generates observations, suggestions, and notes on non-applicable metrics
     for a single test case row.
-    Args:
-        case_row (pd.Series): A row from the individual scores DataFrame.
-        task_type (str): The task type for this case.
-    Returns:
-        tuple: (observations_str, suggestions_str, not_applicable_str)
+    (Code for this function remains the same as previously provided in
+     "genai_eval_tool_interpretation_engine_may17")
     """
     observations = []
     suggestions = []
@@ -33,16 +30,17 @@ def generate_single_case_interpretation(case_row, task_type):
         metric_detail = METRIC_INFO.get(metric_key)
         if metric_detail and "input_field_data_key" in metric_detail:
             input_key = metric_detail["input_field_data_key"]
-            return input_key in case_data and pd.notna(case_data[input_key]) and str(case_data[input_key]).strip()
+            # For individual case, case_data is the row itself (a Series)
+            return input_key in case_data.index and pd.notna(case_data[input_key]) and str(case_data[input_key]).strip()
         return True
 
     # --- Fluency & Lexical Similarity ---
     fluency_metric_keys = ['bleu', 'rouge_1', 'rouge_2', 'rouge_l', 'meteor']
     valid_fluency_scores = []
     for key in fluency_metric_keys:
-        if key in case_row and pd.notna(case_row[key]) and not is_placeholder_metric(key):
+        if key in case_row.index and pd.notna(case_row[key]) and not is_placeholder_metric(key):
             valid_fluency_scores.append(case_row[key])
-        elif key in case_row and pd.isna(case_row[key]) and not is_placeholder_metric(key):
+        elif key in case_row.index and pd.isna(case_row[key]) and not is_placeholder_metric(key):
             not_applicable_metrics.append(f"{get_metric_display_name(key, False)}: Score is NaN.")
     if valid_fluency_scores:
         avg_fluency = np.mean(valid_fluency_scores)
@@ -52,8 +50,8 @@ def generate_single_case_interpretation(case_row, task_type):
 
     # --- Semantic Understanding ---
     metric_key_sem_sim = SEMANTIC_SIMILARITY_SCORE
-    score_sem_sim = case_row.get(metric_key_sem_sim)
-    if metric_key_sem_sim in case_row: # Check if column exists
+    if metric_key_sem_sim in case_row.index: # Check if column exists
+        score_sem_sim = case_row[metric_key_sem_sim]
         if is_placeholder_metric(metric_key_sem_sim): not_applicable_metrics.append(f"{get_metric_display_name(metric_key_sem_sim, False)}: Placeholder unexpectedly.")
         elif pd.notna(score_sem_sim):
             if score_sem_sim >= 0.75: observations.append(f"✅ Semantic Similarity: Strong ({score_sem_sim:.2f}). Meaning highly aligned."); overall_assessment_flags["semantic"] = "good"
@@ -69,67 +67,77 @@ def generate_single_case_interpretation(case_row, task_type):
 
     # --- Trust & Factuality (Fact Presence) ---
     metric_key_fp = 'fact_presence_score'
-    score_fp = case_row.get(metric_key_fp)
-    if metric_key_fp in case_row:
+    if metric_key_fp in case_row.index:
+        score_fp = case_row[metric_key_fp]
+        # For individual case, was_input_provided checks the 'ref_facts' in the original test case data,
+        # which should be part of 'case_row' if it was used to generate the score.
         if not was_input_provided(metric_key_fp, case_row): not_applicable_metrics.append(f"{get_metric_display_name(metric_key_fp, False)}: Not applicable (missing `ref_facts`).")
         elif pd.notna(score_fp):
             if score_fp >= 0.7: observations.append(f"✅ Fact Presence: Good ({score_fp:.2f}). Most specified facts included."); overall_assessment_flags["factuality"] = "good"
             elif score_fp >= 0.4: observations.append(f"⚠️ Fact Presence: Moderate ({score_fp:.2f}). Some facts missing/altered."); overall_assessment_flags["factuality"] = "moderate"
             else: observations.append(f"❌ Fact Presence: Low ({score_fp:.2f}). Significant facts missing."); overall_assessment_flags["factuality"] = "poor"; suggestions.append("Verify missing/inaccurate critical facts from `ref_facts`.")
-        elif pd.isna(score_fp): not_applicable_metrics.append(f"{get_metric_display_name(metric_key_fp, False)}: Score is NaN (Input `ref_facts` provided; review calculation).")
+        elif pd.isna(score_fp):
+            # If score is NaN but input was expected to be there (implicit if was_input_provided was true or not applicable for this metric type)
+             not_applicable_metrics.append(f"{get_metric_display_name(metric_key_fp, False)}: Score is NaN (Input `ref_facts` might have been provided; review calculation).")
+
 
     # --- Completeness & Coverage (Key Point Coverage) ---
     metric_key_cc = 'completeness_score'
-    score_cc = case_row.get(metric_key_cc)
-    if metric_key_cc in case_row:
+    if metric_key_cc in case_row.index:
+        score_cc = case_row[metric_key_cc]
         if not was_input_provided(metric_key_cc, case_row): not_applicable_metrics.append(f"{get_metric_display_name(metric_key_cc, False)}: Not applicable (missing `ref_key_points`).")
         elif pd.notna(score_cc):
             if score_cc >= 0.7: observations.append(f"✅ Key Point Coverage: Good ({score_cc:.2f}). Most key points covered."); overall_assessment_flags["completeness"] = "good"
             elif score_cc >= 0.4: observations.append(f"⚠️ Key Point Coverage: Moderate ({score_cc:.2f}). Some key points unaddressed."); overall_assessment_flags["completeness"] = "moderate"
             else: observations.append(f"❌ Key Point Coverage: Low ({score_cc:.2f}). Significant key points missing."); overall_assessment_flags["completeness"] = "poor"; suggestions.append("Verify if essential topics from `ref_key_points` were addressed.")
-        elif pd.isna(score_cc): not_applicable_metrics.append(f"{get_metric_display_name(metric_key_cc, False)}: Score is NaN (Input `ref_key_points` provided; review calculation).")
+        elif pd.isna(score_cc):
+             not_applicable_metrics.append(f"{get_metric_display_name(metric_key_cc, False)}: Score is NaN (Input `ref_key_points` might have been provided; review calculation).")
 
     # --- Classification Accuracy ---
-    if task_type == CLASSIFICATION: # Use constant from app_config
-        accuracy = case_row.get('accuracy')
-        if 'accuracy' in case_row and pd.notna(accuracy):
-            if accuracy < 1.0: observations.append(f"❌ Classification: Incorrect (Accuracy: {accuracy:.2f})."); overall_assessment_flags["classification"] = "incorrect"; suggestions.append("Analyze misclassification. Review input/ground truth.")
-            else: observations.append(f"✅ Classification: Correct (Accuracy: {accuracy:.2f})."); overall_assessment_flags["classification"] = "correct"
-        elif 'accuracy' in case_row and pd.isna(accuracy): not_applicable_metrics.append(f"{get_metric_display_name('accuracy', False)}: Score is NaN.")
+    if task_type == CLASSIFICATION:
+        if 'accuracy' in case_row.index:
+            accuracy = case_row['accuracy']
+            if pd.notna(accuracy):
+                if accuracy < 1.0: observations.append(f"❌ Classification: Incorrect (Accuracy: {accuracy:.2f})."); overall_assessment_flags["classification"] = "incorrect"; suggestions.append("Analyze misclassification. Review input/ground truth.")
+                else: observations.append(f"✅ Classification: Correct (Accuracy: {accuracy:.2f})."); overall_assessment_flags["classification"] = "correct"
+            elif pd.isna(accuracy): not_applicable_metrics.append(f"{get_metric_display_name('accuracy', False)}: Score is NaN.")
 
     # --- Conciseness ---
-    length_ratio = case_row.get('length_ratio')
-    if 'length_ratio' in case_row and pd.notna(length_ratio):
-        if length_ratio < 0.5: observations.append(f"⚠️ Conciseness: Response significantly shorter (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "too_short"; suggestions.append("Check if response is overly brief/truncated.")
-        elif length_ratio < 0.8: observations.append(f"ℹ️ Conciseness: Response noticeably shorter (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "short"
-        elif length_ratio <= 1.25: observations.append(f"✅ Conciseness: Response length comparable to reference (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "good"
-        elif length_ratio <= 1.75: observations.append(f"ℹ️ Conciseness: Response noticeably longer (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "long"
-        else: observations.append(f"⚠️ Conciseness: Response significantly longer (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "too_long"; suggestions.append("Check if response is too verbose/irrelevant.")
-    elif 'length_ratio' in case_row and pd.isna(length_ratio): not_applicable_metrics.append(f"{get_metric_display_name('length_ratio', False)}: Score is NaN.")
+    if 'length_ratio' in case_row.index:
+        length_ratio = case_row['length_ratio']
+        if pd.notna(length_ratio):
+            if length_ratio < 0.5: observations.append(f"⚠️ Conciseness: Response significantly shorter (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "too_short"; suggestions.append("Check if response is overly brief/truncated.")
+            elif length_ratio < 0.8: observations.append(f"ℹ️ Conciseness: Response noticeably shorter (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "short"
+            elif length_ratio <= 1.25: observations.append(f"✅ Conciseness: Response length comparable to reference (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "good"
+            elif length_ratio <= 1.75: observations.append(f"ℹ️ Conciseness: Response noticeably longer (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "long"
+            else: observations.append(f"⚠️ Conciseness: Response significantly longer (ratio: {length_ratio:.2f})."); overall_assessment_flags["conciseness"] = "too_long"; suggestions.append("Check if response is too verbose/irrelevant.")
+        elif pd.isna(length_ratio): not_applicable_metrics.append(f"{get_metric_display_name('length_ratio', False)}: Score is NaN.")
 
     # --- Safety & Privacy (Only show if issue detected) ---
-    safety_score = case_row.get('safety_keyword_score')
-    if 'safety_keyword_score' in case_row and pd.notna(safety_score):
-        if safety_score < 1.0:
-            observations.append("🚨 Safety: Potential safety keyword detected (Basic Check).")
-            overall_assessment_flags["safety"] = "issue"
-            suggestions.append("MANUAL REVIEW REQUIRED for safety. Identify problematic content; refine safety filters/prompts.")
-    elif 'safety_keyword_score' in case_row and pd.isna(safety_score):
-        not_applicable_metrics.append(f"{get_metric_display_name('safety_keyword_score', False)}: Score is NaN.")
+    if 'safety_keyword_score' in case_row.index:
+        safety_score = case_row['safety_keyword_score']
+        if pd.notna(safety_score):
+            if safety_score < 1.0:
+                observations.append("🚨 Safety: Potential safety keyword detected (Basic Check).")
+                overall_assessment_flags["safety"] = "issue"
+                suggestions.append("MANUAL REVIEW REQUIRED for safety. Identify problematic content; refine safety filters/prompts.")
+        elif pd.isna(safety_score):
+            not_applicable_metrics.append(f"{get_metric_display_name('safety_keyword_score', False)}: Score is NaN.")
 
-    pii_score = case_row.get('pii_detection_score')
-    if 'pii_detection_score' in case_row and pd.notna(pii_score):
-        if pii_score < 1.0:
-            observations.append("🚨 Privacy: Potential PII pattern detected (Basic Regex Check).")
-            overall_assessment_flags["privacy"] = "issue"
-            suggestions.append("MANUAL REVIEW REQUIRED for PII. Ensure sensitive data is not exposed; enhance PII detection/scrubbing.")
-    elif 'pii_detection_score' in case_row and pd.isna(pii_score):
-        not_applicable_metrics.append(f"{get_metric_display_name('pii_detection_score', False)}: Score is NaN.")
+    if 'pii_detection_score' in case_row.index:
+        pii_score = case_row['pii_detection_score']
+        if pd.notna(pii_score):
+            if pii_score < 1.0:
+                observations.append("🚨 Privacy: Potential PII pattern detected (Basic Regex Check).")
+                overall_assessment_flags["privacy"] = "issue"
+                suggestions.append("MANUAL REVIEW REQUIRED for PII. Ensure sensitive data is not exposed; enhance PII detection/scrubbing.")
+        elif pd.isna(pii_score):
+            not_applicable_metrics.append(f"{get_metric_display_name('pii_detection_score', False)}: Score is NaN.")
 
     # Handle placeholder metrics
     placeholder_keys_to_check = ["professional_tone_score", "refusal_quality_score", "nli_entailment_score", "llm_judge_factuality"]
     for pk in placeholder_keys_to_check:
-        if pk in case_row:
+        if pk in case_row.index:
             metric_display_name_pk = get_metric_display_name(pk, False)
             if is_placeholder_metric(pk):
                 metric_explanation = METRIC_INFO.get(pk, {}).get('explanation', 'Full implementation pending.')
@@ -179,81 +187,112 @@ def generate_single_case_interpretation(case_row, task_type):
     return "\n".join(f"- {o}" for o in observations), final_suggestions_text, "\n".join(f"- {na}" for na in not_applicable_metrics if na)
 
 
-def generate_aggregated_interpretations(model_scores_interp, task_type_interp):
+def generate_aggregated_interpretations(model_scores_row, task_type):
     """
-    Generates interpretations for a row of aggregated scores for a model/task.
+    Generates observations, suggestions, and notes on non-applicable metrics
+    for a row of aggregated scores (typically mean scores for a model/task).
     Args:
-        model_scores_interp (pd.Series): Aggregated scores for one model and task.
-        task_type_interp (str): The task type.
+        model_scores_row (pd.Series): A row from the aggregated_scores_df.
+        task_type (str): The task type for this aggregated group.
     Returns:
-        tuple: (interpretations_list, suggestions_list)
+        tuple: (observations_str, suggestions_str, not_applicable_str)
     """
-    interpretations = []
-    suggestions_interp = []
+    observations = []
+    suggestions = []
+    not_applicable_agg = [] # For metrics that are NaN at the aggregated level
 
-    # Fluency
-    fluency_keys = ['bleu', 'rouge_l', 'meteor']
-    fluency_scores_interp = {m: model_scores_interp.get(m) for m in fluency_keys 
-                             if m in model_scores_interp and pd.notna(model_scores_interp.get(m)) and not is_placeholder_metric(m)}
-    if fluency_scores_interp:
-        valid_fluency_scores_interp = [s for s in fluency_scores_interp.values() if pd.notna(s)]
-        if valid_fluency_scores_interp:
-            avg_fluency_interp = np.mean(valid_fluency_scores_interp)
-            if avg_fluency_interp > 0.5: interpretations.append(f"✅ Generally good fluency & lexical similarity (Avg. relevant score: {avg_fluency_interp:.2f}).")
-            elif avg_fluency_interp > 0.2: interpretations.append(f"⚠️ Moderate fluency/lexical similarity (Avg. score: {avg_fluency_interp:.2f}).")
-            else: interpretations.append(f"❌ Low fluency/lexical similarity (Avg. score: {avg_fluency_interp:.2f})."); suggestions_interp.append("Review responses for clarity, grammar. Compare with semantic similarity.")
+    # --- Fluency & Lexical Similarity (Aggregated) ---
+    fluency_keys = ['bleu', 'rouge_l', 'meteor'] # Key metrics for overall fluency
+    agg_fluency_scores = [model_scores_row.get(k) for k in fluency_keys if k in model_scores_row and pd.notna(model_scores_row.get(k)) and not is_placeholder_metric(k)]
+    if agg_fluency_scores:
+        avg_fluency_agg = np.mean(agg_fluency_scores)
+        if avg_fluency_agg > 0.5: observations.append(f"✅ Generally good fluency & lexical similarity (Avg. relevant score: {avg_fluency_agg:.2f}).")
+        elif avg_fluency_agg > 0.2: observations.append(f"⚠️ Moderate fluency/lexical similarity on average (Avg. score: {avg_fluency_agg:.2f}). Responses may often differ lexically from references.")
+        else: observations.append(f"❌ Low fluency/lexical similarity on average (Avg. score: {avg_fluency_agg:.2f}). Responses might frequently be quite different or have linguistic issues."); suggestions.append("Review individual low-scoring cases for clarity and grammar. Compare with aggregated semantic similarity.")
+    else: # Check if any fluency keys were expected but all were NaN
+        for fk in fluency_keys:
+            if fk in model_scores_row and pd.isna(model_scores_row[fk]) and not is_placeholder_metric(fk):
+                not_applicable_agg.append(f"{get_metric_display_name(fk, False)}: Aggregated score is NaN (likely NaN for all individual cases or not computed).")
 
-    # Semantic Similarity
-    semantic_sim_interp = model_scores_interp.get(SEMANTIC_SIMILARITY_SCORE)
-    if pd.notna(semantic_sim_interp) and not is_placeholder_metric(SEMANTIC_SIMILARITY_SCORE):
-        if semantic_sim_interp > 0.7: interpretations.append(f"✅ Good semantic similarity to references ({semantic_sim_interp:.2f}). Meaning is well-aligned.")
-        elif semantic_sim_interp > 0.4: interpretations.append(f"ℹ️ Moderate semantic similarity ({semantic_sim_interp:.2f}). Meaning somewhat aligned.")
-        else: interpretations.append(f"⚠️ Low semantic similarity ({semantic_sim_interp:.2f}). Meaning may differ significantly."); suggestions_interp.append("Low semantic similarity can indicate misunderstanding of query or factual divergence.")
 
-    # Fact Presence
-    fact_presence_interp = model_scores_interp.get('fact_presence_score')
-    if pd.notna(fact_presence_interp) and not is_placeholder_metric('fact_presence_score'):
-        if fact_presence_interp > 0.7: interpretations.append(f"✅ Good inclusion of specified facts ({fact_presence_interp:.2f}).")
-        elif fact_presence_interp > 0.4: interpretations.append(f"⚠️ Moderate inclusion of facts ({fact_presence_interp:.2f}).")
-        else: interpretations.append(f"❌ Low inclusion of specified facts ({fact_presence_interp:.2f})."); suggestions_interp.append("Ensure `ref_facts` are accurate. Model might need better prompting for fact extraction.")
-    elif pd.isna(fact_presence_interp) and 'fact_presence_score' in model_scores_interp and not is_placeholder_metric('fact_presence_score'):
-        interpretations.append(f"ℹ️ Fact Presence: Not applicable or not computed (score is NaN). Likely due to missing `ref_facts` in input data.")
+    # --- Semantic Understanding (Aggregated) ---
+    agg_semantic_sim = model_scores_row.get(SEMANTIC_SIMILARITY_SCORE)
+    if pd.notna(agg_semantic_sim) and not is_placeholder_metric(SEMANTIC_SIMILARITY_SCORE):
+        if agg_semantic_sim > 0.7: observations.append(f"✅ Good average semantic similarity to references ({agg_semantic_sim:.2f}). Meaning is generally well-aligned.")
+        elif agg_semantic_sim > 0.4: observations.append(f"ℹ️ Moderate average semantic similarity ({agg_semantic_sim:.2f}). Meaning is somewhat aligned on average.")
+        else: observations.append(f"⚠️ Low average semantic similarity ({agg_semantic_sim:.2f}). Meaning may differ significantly on average."); suggestions.append("Low average semantic similarity can indicate systemic misunderstanding of queries or factual divergence.")
+    elif SEMANTIC_SIMILARITY_SCORE in model_scores_row and pd.isna(agg_semantic_sim) and not is_placeholder_metric(SEMANTIC_SIMILARITY_SCORE):
+        not_applicable_agg.append(f"{get_metric_display_name(SEMANTIC_SIMILARITY_SCORE, False)}: Aggregated score is NaN (check individual cases or model loading issues).")
 
-    # Key Point Coverage
-    completeness_interp = model_scores_interp.get('completeness_score')
-    if pd.notna(completeness_interp) and not is_placeholder_metric('completeness_score'):
-        if completeness_interp > 0.7: interpretations.append(f"✅ Good coverage of key points ({completeness_interp:.2f}).")
-        elif completeness_interp > 0.4: interpretations.append(f"⚠️ Moderate coverage of key points ({completeness_interp:.2f}).")
-        else: interpretations.append(f"❌ Low coverage of key points ({completeness_interp:.2f})."); suggestions_interp.append("Ensure `ref_key_points` are well-defined. Model might need prompting for comprehensiveness.")
-    elif pd.isna(completeness_interp) and 'completeness_score' in model_scores_interp and not is_placeholder_metric('completeness_score'):
-         interpretations.append(f"ℹ️ Key Point Coverage: Not applicable or not computed (score is NaN). Likely due to missing `ref_key_points` in input data.")
 
-    # Classification
-    if task_type_interp == CLASSIFICATION:
-        f1_interp = model_scores_interp.get('f1_score'); acc_interp = model_scores_interp.get('accuracy')
-        if pd.notna(f1_interp) and not is_placeholder_metric('f1_score'):
-            if f1_interp > 0.75: interpretations.append(f"✅ Good classification performance (F1: {f1_interp:.2f}).")
-            elif f1_interp > 0.5: interpretations.append(f"⚠️ Moderate classification performance (F1: {f1_interp:.2f}).")
-            else: interpretations.append(f"❌ Low classification performance (F1: {f1_interp:.2f})."); suggestions_interp.append("Review misclassified examples. Consider more/better training data.")
-        elif pd.notna(acc_interp) and not is_placeholder_metric('accuracy'):
-             if acc_interp > 0.75: interpretations.append(f"✅ Good classification accuracy ({acc_interp:.2f}).")
-             else: interpretations.append(f"⚠️ Classification accuracy is {acc_interp:.2f}. Check F1/Precision/Recall."); suggestions_interp.append("Review misclassified examples if accuracy is low.")
+    # --- Trust & Factuality (Fact Presence - Aggregated) ---
+    agg_fact_presence = model_scores_row.get('fact_presence_score')
+    if pd.notna(agg_fact_presence) and not is_placeholder_metric('fact_presence_score'):
+        if agg_fact_presence > 0.7: observations.append(f"✅ Good average inclusion of specified facts ({agg_fact_presence:.2f}).")
+        elif agg_fact_presence > 0.4: observations.append(f"⚠️ Moderate average inclusion of facts ({agg_fact_presence:.2f}). Some key information might often be missing.")
+        else: observations.append(f"❌ Low average inclusion of specified facts ({agg_fact_presence:.2f})."); suggestions.append("Review if `ref_facts` were consistently provided and accurate for this group. Model may need better prompting for fact extraction if inputs were correct.")
+    elif 'fact_presence_score' in model_scores_row and pd.isna(agg_fact_presence) and not is_placeholder_metric('fact_presence_score'):
+        not_applicable_agg.append(f"{get_metric_display_name('fact_presence_score', False)}: Aggregated score is NaN (likely `ref_facts` were consistently missing or all individual scores were NaN).")
 
-    # Conciseness
-    length_ratio_interp = model_scores_interp.get('length_ratio')
-    if pd.notna(length_ratio_interp) and not is_placeholder_metric('length_ratio'):
-        if 0.75 <= length_ratio_interp <= 1.25: interpretations.append(f"✅ Good response length relative to reference (Avg. Ratio: {length_ratio_interp:.2f}).")
-        elif length_ratio_interp < 0.5: interpretations.append(f"⚠️ Responses may be too short on average (Avg. Ratio: {length_ratio_interp:.2f})."); suggestions_interp.append("Check if model is truncating answers or being overly brief.")
-        elif length_ratio_interp > 1.75: interpretations.append(f"⚠️ Responses may be too verbose on average (Avg. Ratio: {length_ratio_interp:.2f})."); suggestions_interp.append("Model might be adding unnecessary information.")
-        else: interpretations.append(f"ℹ️ Average length ratio is {length_ratio_interp:.2f}. Assess if appropriate for the task.")
+    # --- Completeness & Coverage (Key Point Coverage - Aggregated) ---
+    agg_completeness = model_scores_row.get('completeness_score')
+    if pd.notna(agg_completeness) and not is_placeholder_metric('completeness_score'):
+        if agg_completeness > 0.7: observations.append(f"✅ Good average coverage of key points ({agg_completeness:.2f}).")
+        elif agg_completeness > 0.4: observations.append(f"⚠️ Moderate average coverage of key points ({agg_completeness:.2f}). May often not address all aspects.")
+        else: observations.append(f"❌ Low average coverage of key points ({agg_completeness:.2f})."); suggestions.append("Review if `ref_key_points` were consistently provided and well-defined. Model might need prompting for better comprehensiveness.")
+    elif 'completeness_score' in model_scores_row and pd.isna(agg_completeness) and not is_placeholder_metric('completeness_score'):
+        not_applicable_agg.append(f"{get_metric_display_name('completeness_score', False)}: Aggregated score is NaN (likely `ref_key_points` were consistently missing or all individual scores were NaN).")
 
-    # Safety & Privacy
-    safety_score_interp = model_scores_interp.get('safety_keyword_score')
-    if pd.notna(safety_score_interp) and not is_placeholder_metric('safety_keyword_score'):
-        if safety_score_interp < 1.0: interpretations.append(f"🚨 Safety alert! Basic keyword check failed for some responses (Avg Score: {safety_score_interp:.2f}). MANUAL REVIEW OF INDIVIDUAL CASES IS CRITICAL."); suggestions_interp.append("Implement stricter content filtering.")
+    # --- Classification (Aggregated F1-Score or Accuracy) ---
+    if task_type == CLASSIFICATION:
+        agg_f1 = model_scores_row.get('f1_score')
+        agg_acc = model_scores_row.get('accuracy')
+        # Prioritize F1 for aggregated classification interpretation
+        if pd.notna(agg_f1) and not is_placeholder_metric('f1_score'):
+            if agg_f1 > 0.75: observations.append(f"✅ Good overall classification performance (Avg. F1: {agg_f1:.2f}).")
+            elif agg_f1 > 0.5: observations.append(f"⚠️ Moderate overall classification performance (Avg. F1: {agg_f1:.2f}).")
+            else: observations.append(f"❌ Low overall classification performance (Avg. F1: {agg_f1:.2f})."); suggestions.append("Review misclassified examples across the dataset. Consider if model needs more/better training data or feature engineering.")
+        elif pd.notna(agg_acc) and not is_placeholder_metric('accuracy'): # Fallback to accuracy
+             if agg_acc > 0.75: observations.append(f"✅ Good overall classification accuracy (Avg. Accuracy: {agg_acc:.2f}).")
+             else: interpretations.append(f"⚠️ Overall classification accuracy is {agg_acc:.2f}. Check F1/Precision/Recall if available."); suggestions.append("Review misclassified examples if overall accuracy is low.")
+        elif ('f1_score' in model_scores_row and pd.isna(agg_f1) and not is_placeholder_metric('f1_score')) or \
+             ('accuracy' in model_scores_row and pd.isna(agg_acc) and not is_placeholder_metric('accuracy')):
+            not_applicable_agg.append("Classification Metrics (F1/Accuracy): Aggregated scores are NaN.")
 
-    pii_score_interp = model_scores_interp.get('pii_detection_score')
-    if pd.notna(pii_score_interp) and not is_placeholder_metric('pii_detection_score'):
-        if pii_score_interp < 1.0: interpretations.append(f"🚨 Privacy alert! Basic PII pattern check failed for some responses (Avg Score: {pii_score_interp:.2f}). MANUAL REVIEW IS CRITICAL."); suggestions_interp.append("Enhance PII detection/scrubbing.")
 
-    return interpretations, suggestions_interp
+    # --- Conciseness (Aggregated Length Ratio) ---
+    agg_length_ratio = model_scores_row.get('length_ratio')
+    if pd.notna(agg_length_ratio) and not is_placeholder_metric('length_ratio'):
+        if 0.75 <= agg_length_ratio <= 1.25: observations.append(f"✅ Good average response length relative to reference (Avg. Ratio: {agg_length_ratio:.2f}).")
+        elif agg_length_ratio < 0.5: observations.append(f"⚠️ Responses may be too short on average (Avg. Ratio: {agg_length_ratio:.2f})."); suggestions.append("Check if model is consistently truncating answers or being overly brief.")
+        elif agg_length_ratio > 1.75: observations.append(f"⚠️ Responses may be too verbose on average (Avg. Ratio: {agg_length_ratio:.2f})."); suggestions.append("Model might be consistently adding unnecessary information.")
+        else: observations.append(f"ℹ️ Average length ratio is {agg_length_ratio:.2f}. Assess if this average is appropriate for the task.")
+    elif 'length_ratio' in model_scores_row and pd.isna(agg_length_ratio) and not is_placeholder_metric('length_ratio'):
+        not_applicable_agg.append(f"{get_metric_display_name('length_ratio', False)}: Aggregated score is NaN.")
+
+    # --- Safety & Privacy (Aggregated) ---
+    agg_safety_score = model_scores_row.get('safety_keyword_score')
+    if pd.notna(agg_safety_score) and not is_placeholder_metric('safety_keyword_score'):
+        if agg_safety_score < 1.0: # If average is < 1, it means at least one instance failed
+            observations.append(f"🚨 Safety Alert! Basic keyword check failed for some responses (Avg. Score: {agg_safety_score:.2f}, where 1.0 is best)."); suggestions.append("MANUAL REVIEW OF INDIVIDUAL FAILED CASES IS CRITICAL. Implement stricter content filtering or review prompts that might lead to unsafe content.")
+    elif 'safety_keyword_score' in model_scores_row and pd.isna(agg_safety_score) and not is_placeholder_metric('safety_keyword_score'):
+        not_applicable_agg.append(f"{get_metric_display_name('safety_keyword_score', False)}: Aggregated score is NaN.")
+
+    agg_pii_score = model_scores_row.get('pii_detection_score')
+    if pd.notna(agg_pii_score) and not is_placeholder_metric('pii_detection_score'):
+        if agg_pii_score < 1.0:
+            observations.append(f"🚨 Privacy Alert! Basic PII pattern check failed for some responses (Avg. Score: {agg_pii_score:.2f}, where 1.0 is best)."); suggestions.append("MANUAL REVIEW OF INDIVIDUAL FAILED CASES IS CRITICAL. Enhance PII detection and scrubbing; review data handling policies and prompts.")
+    elif 'pii_detection_score' in model_scores_row and pd.isna(agg_pii_score) and not is_placeholder_metric('pii_detection_score'):
+        not_applicable_agg.append(f"{get_metric_display_name('pii_detection_score', False)}: Aggregated score is NaN.")
+
+    # Handle placeholder metrics at aggregated level
+    for pk in METRIC_INFO.keys():
+        if pk in model_scores_row and is_placeholder_metric(pk) and pd.isna(model_scores_row[pk]):
+            not_applicable_agg.append(f"{get_metric_display_name(pk, False)}: Placeholder - Not implemented (Aggregated score is NaN).")
+
+    # Consolidate outputs
+    obs_str = "\n".join(f"- {o}" for o in observations) if observations else "No specific aggregated observations based on current thresholds."
+    sugg_str = "\n".join(f"- {s}" for s in suggestions) if suggestions else "No specific aggregated suggestions."
+    na_str = "\n".join(f"- {na}" for na in not_applicable_agg) if not_applicable_agg else "All relevant aggregated metrics computed or no specific non-applicability notes."
+    
+    return obs_str, sugg_str, na_str

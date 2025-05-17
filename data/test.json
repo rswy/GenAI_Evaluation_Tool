@@ -1,0 +1,42 @@
+[
+  {
+    "id": "rag_test_001",
+    "task_type": "rag_faq",
+    "model": "TestModel_RAG",
+    "question": "What is the capital of France?",
+    "contexts": "France is a country in Western Europe. Paris is its capital and largest city.",
+    "ground_truth": "The capital of France is Paris.",
+    "answer": "Paris is the capital of France.",
+    "ref_facts": "Paris is capital of France",
+    "ref_key_points": "Capital city,Paris",
+    "test_description": "Basic RAG test"
+  },
+  {
+    "id": "sum_test_001",
+    "task_type": "summarization",
+    "model": "TestModel_SUM",
+    "question": "Summarize this text: The quick brown fox jumps over the lazy dog. This sentence contains all letters of the English alphabet.",
+    "ground_truth": "The provided sentence is a pangram as it includes every letter of the alphabet.",
+    "answer": "The sentence 'The quick brown fox jumps over the lazy dog' is a pangram.",
+    "ref_key_points": "Pangram,All letters",
+    "test_description": "Basic summarization test"
+  },
+  {
+    "id": "cls_test_001",
+    "task_type": "classification",
+    "model": "TestModel_CLS",
+    "question": "This movie was fantastic!",
+    "ground_truth": "positive",
+    "answer": "positive",
+    "test_description": "Basic classification test"
+  },
+  {
+    "id": "chat_test_001",
+    "task_type": "chatbot",
+    "model": "TestModel_CHAT",
+    "question": "Hello",
+    "ground_truth": "Hi there! How can I help you today?",
+    "answer": "Hello! What can I do for you?",
+    "test_description": "Basic chatbot greeting"
+  }
+]
