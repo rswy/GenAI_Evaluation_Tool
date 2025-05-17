@@ -2,14 +2,14 @@
 # This file makes it easier to import metrics and potentially register them
 
 # Import from new dimension-specific files
-from .fluency_similarity import BleuMetric, RougeMetric, MeteorMetric
+from .fluency_similarity import BleuMetric, RougeMetric, MeteorMetric, SemanticSimilarityMetric # SemanticSimilarityMetric moved here
 from .classification import ClassificationMetrics
-from .trust_factuality import FactPresenceMetric # Assuming NLIScoreMetric, LLMJudge moved to placeholders
+from .trust_factuality import FactPresenceMetric
 from .completeness import ChecklistCompletenessMetric
 from .conciseness import LengthRatioMetric
 from .safety import SafetyKeywordMetric, PIIDetectionMetric
-from .placeholders import NLIScoreMetric, LLMAsJudgeFactualityMetric, ProfessionalToneMetric, RefusalQualityMetric # Import placeholders
-
+from .placeholders import NLIScoreMetric, LLMAsJudgeFactualityMetric, ProfessionalToneMetric, RefusalQualityMetric
+# Removed: from .semantic_similarity import SemanticSimilarityMetric 
 
 
 # Dictionary to map metric names to their respective classes for easy instantiation
@@ -18,22 +18,19 @@ METRIC_CLASS_REGISTRY = {
     "bleu": BleuMetric, 
     "rouge": RougeMetric, 
     "meteor": MeteorMetric,
+    "semantic_similarity": SemanticSimilarityMetric, # Now sourced from fluency_similarity
     "classification": ClassificationMetrics,
     "fact_presence": FactPresenceMetric, 
     "completeness": ChecklistCompletenessMetric,
     "length_ratio": LengthRatioMetric, 
     "safety_keyword": SafetyKeywordMetric,
-    # "semantic_similarity": SemanticSimilarityMetric, # Assumed commented out
-    # --- Add New Metrics ---
     "pii_detection": PIIDetectionMetric,
-    "professional_tone": ProfessionalToneMetric, # Placeholder
-    "refusal_quality": RefusalQualityMetric,     # Placeholder
     # --- Placeholders ---
-    "nli_score": NLIScoreMetric,                 # Placeholder (if key used elsewhere)
-    "llm_judge_fact": LLMAsJudgeFactualityMetric # Placeholder (if key used elsewhere)
+    "professional_tone": ProfessionalToneMetric, 
+    "refusal_quality": RefusalQualityMetric,     
+    "nli_score": NLIScoreMetric,                 
+    "llm_judge_fact": LLMAsJudgeFactualityMetric 
 }
-
-
 
 # Helper function to get all metric instances needed for a list of metric names
 # Metric names here correspond to the *output keys* of the compute methods (e.g., "rouge_1", "accuracy")
@@ -48,6 +45,11 @@ def get_metric_instances(metric_names):
         instances["rouge"] = METRIC_CLASS_REGISTRY["rouge"]()
     if "meteor" in requested_metric_keys:
         instances["meteor"] = METRIC_CLASS_REGISTRY["meteor"]()
+    
+    # Semantic Similarity (now grouped with fluency/similarity metrics in terms of file location)
+    if "semantic_similarity_score" in requested_metric_keys:
+         instances["semantic_similarity"] = METRIC_CLASS_REGISTRY["semantic_similarity"]()
+         
     if requested_metric_keys.intersection(["accuracy", "precision", "recall", "f1_score"]):
         instances["classification"] = METRIC_CLASS_REGISTRY["classification"]()
 
@@ -60,22 +62,17 @@ def get_metric_instances(metric_names):
          instances["length_ratio"] = METRIC_CLASS_REGISTRY["length_ratio"]()
     if "safety_keyword_score" in requested_metric_keys:
          instances["safety_keyword"] = METRIC_CLASS_REGISTRY["safety_keyword"]()
-    
-    # if "semantic_similarity" in requested_metric_keys: # Assumed commented out
-    #      instances["semantic_similarity"] = METRIC_CLASS_REGISTRY["semantic_similarity"]()
-
-    # --- Add New Metrics ---
     if "pii_detection_score" in requested_metric_keys:
         instances["pii_detection"] = METRIC_CLASS_REGISTRY["pii_detection"]()
+    
+    # --- Placeholders ---
     if "professional_tone_score" in requested_metric_keys:
         instances["professional_tone"] = METRIC_CLASS_REGISTRY["professional_tone"]()
     if "refusal_quality_score" in requested_metric_keys:
         instances["refusal_quality"] = METRIC_CLASS_REGISTRY["refusal_quality"]()
-
-    # --- Handle existing placeholders if needed ---
-    if "nli_entailment_score" in requested_metric_keys:
-        instances["nli_score"] = NLIScoreMetric() # Instantiate directly if not in registry map
-    if "llm_judge_factuality" in requested_metric_keys:
-         instances["llm_judge_fact"] = LLMAsJudgeFactualityMetric() # Instantiate directly
+    if "nli_entailment_score" in requested_metric_keys: 
+        instances["nli_score"] = METRIC_CLASS_REGISTRY["nli_score"]() 
+    if "llm_judge_factuality" in requested_metric_keys: 
+         instances["llm_judge_fact"] = METRIC_CLASS_REGISTRY["llm_judge_fact"]()
 
     return instances

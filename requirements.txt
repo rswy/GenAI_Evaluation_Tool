@@ -6,16 +6,16 @@ tabulate
 streamlit>=1.28.0,<2.0.0
 plotly>=5.10.0,<6.0.0
 
+
 # Core libraries
 pandas>=1.5.0,<3.0.0
 numpy>=1.20.0,<2.0.0
 matplotlib
 
-
 # NLP Metrics
 nltk>=3.6.0,<4.0.0
 rouge-score>=0.1.0,<0.2.0
-sacrebleu>=2.0.0,<3.0.0
+sacrebleu>=2.0.0,<3.0.0 # sacrebleu is often used for BLEU
 
 # Classification Metrics
 scikit-learn>=1.0.0,<2.0.0
@@ -25,12 +25,14 @@ scikit-learn>=1.0.0,<2.0.0
 # sentence-transformers>=2.2.0,<3.0.0
 # Add it if you need deep semantic similarity and have the resources.
 # bert-score>=0.3.11,<0.4.0  # Note: bert-score requires PyTorch/TensorFlow and downloads models.
-sentence-transformers
+sentence-transformers>=2.2.0 # Using a specific version or range is good practice
 
 
 
 
 
+
+# Semantic Similarity
 
 # --- Optional Libraries for Advanced Metrics ---
 
@@ -39,7 +41,7 @@ sentence-transformers
 
 # For NLI-based Fact Checking (Example - requires model download)
 # transformers>=4.0.0,<5.0.0
-# torch>=1.8.0,<2.0.0 # Or tensorflow
+# torch>=1.8.0 # Or tensorflow
 
 # Optional: For advanced reporting (e.g., HTML)
 # jinja2>=3.0.0,<4.0.0
