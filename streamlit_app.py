@@ -39,7 +39,7 @@ st.info("ℹ️ How to use testing framework: \n\n" \
 "\n\n\t - Using mock data, click on 'Generate Mock Data' on the sidebar and click 'Generate and use Mock Data. \n\n" \
 "- Running Evaluation on Data: " \
 "\n\n\t - Once the data is uploaded/added, under the 'Evaluation & Results' tab, click 'Run Evaluation on Data in Editor' button. \n\n" \
-"\n\n\t - Refer to 'README.md' for even more details. \n\n" \
+"\n- Refer to 'README.md' for even more details. \n\n" \
 "-------------------------------\n\n" \
 "ℹ️ How to use Command Line instead to run batch test cases: Refer to 'how_to_use_mainpy.md' \n\n \n\n" \
 "-------------------------------\n\n" \
