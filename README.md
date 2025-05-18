@@ -476,30 +476,54 @@ python main.py --input-file data/my_eval_data.csv --output-dir custom_reports
 * For classification tasks, the per-instance scores for Accuracy, Precision, Recall, and F1-Score displayed in the "Individual Scores" table typically represent binary correctness (1.0 if correct for that specific instance's label pair, 0.0 if incorrect). This is a simplified view for individual case analysis.
 * The aggregated scores for these metrics (shown in the "Aggregated Results" tab) are the standard, more statistically meaningful measures (e.g., overall accuracy, macro-averaged F1-score across all samples for a model/task).
 
-**Potential Environment/Runtime Errors**
+**Troubleshooting Potential Environment/Runtime Errors**
 
 * **PyTorch/asyncio/Streamlit Errors:** Users might encounter `RuntimeError` related to asyncio event loops or PyTorch internal classes (like `__path__._path`) when running Streamlit. These often stem from:
     * Library version incompatibilities (Streamlit, PyTorch, `sentence-transformers`).
     * Corrupted PyTorch installations.
     * Interactions with Streamlit's file watcher.
-* **Troubleshooting:**
-    * Use a clean virtual environment.
-    * Reinstall PyTorch correctly from [pytorch.org](https://pytorch.org/), ensuring compatibility with your OS and CUDA (if applicable).
-    * Isolate problematic imports: Temporarily comment out imports related to `sentence-transformers` to see if the error persists.
-    * Create a file named `.streamlit/config.toml` in the root directory of your project (where you run `streamlit run ...`) with the following content
 
-        ```toml
-        [server]
-        fileWatcherType = "poll"
-        ```
+**The Most Effective Solution for This Specific Error:**
 
-        or
+The most common and effective way to resolve this particular RuntimeError: Tried to instantiate class '__path__._path' when using Streamlit with PyTorch/Sentence-Transformers is to change Streamlit's file watcher type.
 
-        ```toml
-        [server]
-        fileWatcherType = "none"
-        ```
-        The "poll" watcher is sometimes more stable than the default "watchdog" on certain systems or with complex project structures. You can also try "none" to disable it for testing (though you'll lose auto-reload on file changes).
+* How to apply the fix:
+    1. Create a .streamlit directory in the root of your project (i.e., in GenAI_Evaluation_Tool-main/, at the same level as your streamlit_app.py).
+    2. Inside the .streamlit directory, create a file named config.toml.
+
+    3. Add the following content to config.toml:
+
+    ```
+    Ini, TOML
+
+    [server]
+    # This tells Streamlit to use a polling mechanism for file changes,
+    # which is often more stable with complex libraries than the default.
+    # Options are: "watchdog", "poll", "none"
+    fileWatcherType = "poll"
+
+    # If "poll" doesn't work, you can try "none" to disable the watcher entirely.
+    # This means Streamlit won't automatically reload when you save file changes;
+    # you'll need to manually stop and restart the Streamlit server.
+    # This is a good diagnostic step to confirm the watcher is the issue.
+    # fileWatcherType = "none"
+    ```
+
+    Explanation:
+
+    Streamlit's default file watcher (watchdog) can sometimes be too aggressive or interact in unexpected ways with how certain libraries (especially those with C++ extensions like PyTorch) expose their internal module structures. This seems to be what's happening with torch._classes and __path__._path.
+    Setting fileWatcherType = "poll" uses a different, often more compatible, method to check for file changes.
+    Setting fileWatcherType = "none" disables the watcher. If the error disappears with "none", it definitively points to the file watcher interaction as the root cause. You can then decide if "poll" is an acceptable long-term solution or if you prefer to work with the watcher disabled during development involving these libraries.
+
+    **Other Checks (Secondary, but good practice)**
+    1. Clean Environment: If you haven't already, ensure you are working in a clean virtual environment with dependencies freshly installed from your requirements.txt.
+    2. Reinstall PyTorch correctly from [pytorch.org](https://pytorch.org/), ensuring compatibility with your OS and CUDA (if applicable).
+        * ``` pip uninstall torch torchvision torchaudio ```
+        * Install the correct version from pytorch.org. For CPU: ```pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu```
+    3. Streamlit Version: Ensure your Streamlit version is relatively recent. `pip install --upgrade streamlit`
+
+    4. Isolate problematic imports: Temporarily comment out imports related to `sentence-transformers` to see if the error persists.
+    
 ## 9. Extending the Tool (Brief Overview)
 
 The tool is designed to be extensible:
