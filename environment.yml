@@ -1,0 +1,35 @@
+name: llm-eval-env  # Choose a name for your environment
+channels:
+  - defaults
+  - conda-forge
+  - pytorch         # For PyTorch and related packages like sentence-transformers
+  - anaconda        # Often a good fallback
+dependencies:
+  - python=3.9      # Specify your desired Python version
+  # Core Data Science & NLP
+  - pandas>=1.5.0,<3.0.0
+  - numpy>=1.20.0,<2.0.0
+  - matplotlib
+  - scikit-learn>=1.0.0,<2.0.0
+  - nltk>=3.6.0,<4.0.0
+  - openpyxl>=3.0.0,<4.0.0 # For Excel
+  - tabulate                # For report generation (CLI)
+  # Streamlit and Plotting
+  - streamlit>=1.28.0,<2.0.0
+  - plotly>=5.10.0,<6.0.0
+  # Specific NLP Metrics Libraries
+  - rouge-score>=0.1.0,<0.2.0
+  - sacrebleu>=2.0.0,<3.0.0 # Note: NLTK's BLEU is also an option but SacreBLEU is often preferred
+  # PyTorch and Sentence Transformers
+  # sentence-transformers will pull in PyTorch. Explicitly listing PyTorch can help.
+  # Check the latest PyTorch installation command for your OS/CUDA version from pytorch.org
+  # For CPU-only:
+  - pytorch::pytorch # Use the pytorch channel
+  - torchvision     # Often a companion to PyTorch
+  - torchaudio      # Often a companion to PyTorch
+  - sentence-transformers # This should now resolve PyTorch from the pytorch channel
+  # Pip dependencies (for packages not readily available on Conda or for specific versions)
+  # Conda will run pip after installing conda packages.
+  # - pip:
+  #   - some-pip-only-package==1.0 
+  #   - -r ./requirements_pip_only.txt # If you have a separate file for pip-only
