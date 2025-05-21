@@ -75,11 +75,14 @@ The GenAI Evaluation Tool is a comprehensive framework designed to assess the pe
 
 ## 2. Setup and Installation
 
+
 ### Prerequisites
 * Python 3.8 or higher.
 * `pip` (Python package installer).
 
-### Creating a Virtual Environment
+### PIP Approach (with requirements.txt)
+
+#### Creating a Virtual Environment using 
 It is highly recommended to use a virtual environment to manage dependencies and avoid conflicts with system-wide packages.
 
 1.  **Create a virtual environment:**
@@ -96,7 +99,7 @@ It is highly recommended to use a virtual environment to manage dependencies and
         source genai-eval-env/bin/activate
         ```
 
-### Installing Dependencies
+#### Installing Dependencies
 All required Python packages are listed in the `requirements.txt` file.
 
 1.  **Navigate to the project root directory** (where `requirements.txt` is located).
@@ -106,9 +109,55 @@ All required Python packages are listed in the `requirements.txt` file.
     ```
     This will install Streamlit, pandas, NLTK, scikit-learn, sentence-transformers, and other necessary libraries.
 
+
+### CONDA approach (with environment.yml)
+
+1. **Create and Activate Environment:**
+Open your terminal or Anaconda Prompt, navigate to the directory containing `environment.yml`, and run:
+    ```bash
+    conda env create -f environment.yml
+    ```
+    This will create the environment with the specified name (e.g., `llm-eval-env`). After it's created, they activate it:
+    ```bash
+    conda activate llm-eval
+    ```
+If it doesn't work, comment out lines 1-35 and uncomment lines 45-63 and rerun the commands above. 
+
+2. **Addressing Slow Package Installations**
+
+Slow installations can be frustrating. Here are strategies to mitigate this:
+
+1.  **Use Mamba (Highly Recommended for Speed):**
+    * Mamba is a re-implementation of the Conda package manager in C++ and is significantly faster at dependency solving and downloading.
+    * **Installation:** `conda install -n base -c conda-forge mamba` (installs Mamba into your base Conda environment).
+    * **Usage:** Users can then replace `conda` with `mamba` for environment creation:
+        ```bash
+        mamba env create -f environment.yml
+        mamba activate llm-eval-env
+        ```
+
+
+### Important: Check if rouge package can be found:**
+    ```bash
+    1. Activate the virtual environment:  venv/Scripts/activate
+    2. type `python`
+    3. import rouge_score
+    ```
+
+    If rouge_score module cannot be found, do the following: 
+    ```bash
+    1. pip uninstall rouge_score
+    2. pip install the rouge_score whl file in the root folder GENAI_EVALUATION_TOOL_MAIN: 'pip install rouge_score-0.1.2-py3-none-any.whl'
+    3. type 'python'
+    4. import rouge_score
+    ```
+
+    The rouge_score module should now be able to be imported.
+
 ### NLTK Data Download
 Several metrics rely on data packages from the Natural Language Toolkit (NLTK). These need to be downloaded once.
 
+#### Files not yet downloaded: (*CAN SKIP THIS STEP AND EXTRACT FILES FROM nltk_data.zip*)
 1.  Open a Python interpreter within your activated virtual environment:
     ```bash
     python
@@ -121,18 +170,30 @@ Several metrics rely on data packages from the Natural Language Toolkit (NLTK). 
     nltk.download('omw-1.4')    # For WordNet (Open Multilingual Wordnet)
     exit()
     ```
+#### Files have been downloaded:
+1.  Open a Python interpreter within your activated virtual environment:
+    ```bash
+    python
+    ```
+2.  Find the nltk pathway that the system searches nltk data from
+    ```python
+    import nltk
+    print(nltk.data.path)
+    ```
+3. Copy the extracted nltk_data folder into any path identified in step 2.
 
-### Semantic Similarity Model Setup (Important)
+
+### Semantic Similarity Model Setup (Important) *Skip this step unless you want to use another model outside of 'all-MiniLM-L6-v2': Provided in the models folder*
 The Semantic Similarity metric uses models from the `sentence-transformers` library. These models need to be available to the tool.
 
-#### Online Usage (Automatic Download)
+#### Online Usage (Automatic Download) --*Not Needed as the model files are provided in models folder*
 If the machine running the tool has internet access, the `sentence-transformers` library will attempt to download the required model (default: `all-MiniLM-L6-v2`) automatically on the first run when the `SemanticSimilarityMetric` is initialized.
 * **Note:** This initial download can take some time and requires an internet connection. Subsequent runs will use the cached model.
 
 #### Offline Usage (Manual Download and Setup)
 For environments without internet access, you must download the model files beforehand and configure the tool to load them from a local path.
 
-**Step 1: Download the Model (on an Online Machine)**
+**Step 1: Download the Model (on an Online Machine) --*I have provided the model file for 'all-MiniLM-L6-v2' so feel free to skip this step unless you're intending to use another model***
 * Create a Python script (e.g., `save_model.py`) with the following content:
     ```python
     from sentence_transformers import SentenceTransformer
@@ -476,30 +537,54 @@ python main.py --input-file data/my_eval_data.csv --output-dir custom_reports
 * For classification tasks, the per-instance scores for Accuracy, Precision, Recall, and F1-Score displayed in the "Individual Scores" table typically represent binary correctness (1.0 if correct for that specific instance's label pair, 0.0 if incorrect). This is a simplified view for individual case analysis.
 * The aggregated scores for these metrics (shown in the "Aggregated Results" tab) are the standard, more statistically meaningful measures (e.g., overall accuracy, macro-averaged F1-score across all samples for a model/task).
 
-**Potential Environment/Runtime Errors**
+**Troubleshooting Potential Environment/Runtime Errors**
 
 * **PyTorch/asyncio/Streamlit Errors:** Users might encounter `RuntimeError` related to asyncio event loops or PyTorch internal classes (like `__path__._path`) when running Streamlit. These often stem from:
     * Library version incompatibilities (Streamlit, PyTorch, `sentence-transformers`).
     * Corrupted PyTorch installations.
     * Interactions with Streamlit's file watcher.
-* **Troubleshooting:**
-    * Use a clean virtual environment.
-    * Reinstall PyTorch correctly from [pytorch.org](https://pytorch.org/), ensuring compatibility with your OS and CUDA (if applicable).
-    * Isolate problematic imports: Temporarily comment out imports related to `sentence-transformers` to see if the error persists.
-    * Adjust Streamlit's file watcher: Create `.streamlit/config.toml` with:
 
-        ```toml
-        [server]
-        fileWatcherType = "poll"
-        ```
+**The Most Effective Solution for This Specific Error:**
 
-        or
+The most common and effective way to resolve this particular RuntimeError: Tried to instantiate class '__path__._path' when using Streamlit with PyTorch/Sentence-Transformers is to change Streamlit's file watcher type.
 
-        ```toml
-        [server]
-        fileWatcherType = "none"
-        ```
+* How to apply the fix:
+    1. Create a `.streamlit` directory in the root of your project (i.e., in GenAI_Evaluation_Tool-main/, at the same level as your streamlit_app.py).
+    2. Inside the `.streamlit` directory, create a file named config.toml.
 
+    3. Add the following content to config.toml:
+
+    ```
+    Ini, TOML
+
+    [server]
+    # This tells Streamlit to use a polling mechanism for file changes,
+    # which is often more stable with complex libraries than the default.
+    # Options are: "watchdog", "poll", "none"
+    fileWatcherType = "poll"
+
+    # If "poll" doesn't work, you can try "none" to disable the watcher entirely.
+    # This means Streamlit won't automatically reload when you save file changes;
+    # you'll need to manually stop and restart the Streamlit server.
+    # This is a good diagnostic step to confirm the watcher is the issue.
+    # fileWatcherType = "none"
+    ```
+
+    Explanation:
+
+    Streamlit's default file watcher (watchdog) can sometimes be too aggressive or interact in unexpected ways with how certain libraries (especially those with C++ extensions like PyTorch) expose their internal module structures. This seems to be what's happening with torch._classes and __path__._path.
+    Setting fileWatcherType = "poll" uses a different, often more compatible, method to check for file changes.
+    Setting fileWatcherType = "none" disables the watcher. If the error disappears with "none", it definitively points to the file watcher interaction as the root cause. You can then decide if "poll" is an acceptable long-term solution or if you prefer to work with the watcher disabled during development involving these libraries.
+
+    **Other Checks (Secondary, but good practice)**
+    1. Clean Environment: If you haven't already, ensure you are working in a clean virtual environment with dependencies freshly installed from your requirements.txt.
+    2. Reinstall PyTorch correctly from [pytorch.org](https://pytorch.org/), ensuring compatibility with your OS and CUDA (if applicable).
+        * ``` pip uninstall torch torchvision torchaudio ```
+        * Install the correct version from pytorch.org. For CPU: ```pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu```
+    3. Streamlit Version: Ensure your Streamlit version is relatively recent. `pip install --upgrade streamlit`
+
+    4. Isolate problematic imports: Temporarily comment out imports related to `sentence-transformers` to see if the error persists.
+    
 ## 9. Extending the Tool (Brief Overview)
 
 The tool is designed to be extensible:
